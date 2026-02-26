@@ -1,0 +1,151 @@
+ALE - Allegro
+ALR - Alior Bank
+BDX - Budimex
+CDR - CD Projekt
+DNP - Dino Polska
+KGH - KGHM Polska Miedź
+KRU - Kruk
+KTY - Grupa Kęty
+LPP - LPP
+MBK - mBank
+MDV - Modivo
+OPL - Orange Polska
+PCO - Pepco Group
+PEO - Bank Pekao
+PGE - PGE
+PKN - Orlen
+PKO - PKO BP
+PZU - PZU
+SPL - Santander Bank Polska
+ZAB - Żabka Group
+1AT - Atal
+ABS - Asseco Business Solutions
+ACG - AC SA
+AGO - Agora
+ALL - Ailleron
+AMB - Ambra
+AMC - Amica
+APT - Apator
+ARH - Archicom
+ARL - Arlen
+AST - Astarta
+ATC - Arctic Paper
+BCX - Bioceltix
+BIO - Bioton
+BLO - Bloober Team
+BMC - Bumech
+BOS - Bank Ochrony Środowiska
+BRS - Boryszew
+CIG - CI Games
+CLC - Columbus Energy
+CLN - Celon Pharma
+CMP - Comp
+COG - Cognor
+CRI - Creotech Instruments
+CRJ - Creepy Jar
+CTX - Captor Therapeutics
+DAD - Dadelo
+DAT - DataWalk
+DCR - Decora
+DIG - Digital Network
+ECH - Echo Investment
+ELT - Elektrotim
+ENT - Enter Air
+ERB - Erbud
+FRO - Ferro
+FTE - Forte
+GRX - GreenX Metals
+KGN - Kogeneracja
+LWB - Bogdanka
+MAB - Mabion
+MCI - MCI Capital
+MCR - Mercor
+MDG - Medicalgorithmics
+MLG - MLP Group
+MNC - Mennica Polska
+MRC - Mercator Medical
+MSZ - Mostostal Zabrze
+OPN - Oponeo.pl
+PCE - PCC Exol
+PCF - PCF Group
+PCR - PCC Rokita
+PHN - Polski Holding Nieruchomości
+PXM - Polimex-Mostostal
+QRS - Quercus TFI
+RFK - Rafako
+RVU - Ryvu Therapeutics
+SEC - Seco/Warwick
+SEL - Selena FM
+SGN - Sygnity
+SHD - Shoper
+SKA - Śnieżka
+SLV - Selvita
+SNK - Sanok Rubber
+STP - Stalprodukt
+STX - Stalexport Autostrady
+SVE - Synthaverse
+TAR - Tarczyński
+TOA - Toya
+TOR - Torpol
+UNI - Unibep
+UNT - Unimot
+VGO - Vigo Photonics
+VOT - Votum
+VRG - VRG
+WLT - Wielton
+WWL - Wawel
+ZAP - Puławy
+ZEP - ZE PAK
+11B - 11 bit studios
+ABE - AB
+ACP - Asseco Poland
+APR - Auto Partner
+ASB - Asbis
+ASE - Asseco SEE
+ATT - Grupa Azoty
+BFT - Benefit Systems
+BHW - Bank Handlowy
+BNP - BNP Paribas Bank Polska
+CAR - Inter Cars
+CBF - Cyber_Folks
+CPS - Cyfrowy Polsat
+DIAG - Diagnostyka
+DOM - Dom Development
+DVL - Develia
+EAT - AmRest
+ENA - Enea
+EUR - Eurocash
+GPP - Pracuj
+GPW - GPW
+HUG - Huuuge
+ING - ING Bank Śląski
+JSW - JSW
+LBW - Lubawa
+MBR - Mo-Bruk
+MIL - Bank Millennium
+MRB - Mirbud
+NEU - Neuca
+NWG - Newag
+PEP - Polenergia
+RBW - Rainbow Tours
+SNT - Synektik
+TEN - Ten Square Games
+TPE - Tauron
+TXT - Text
+VOX - Voxel
+VRC - Vercom
+WPL - Wirtualna Polska
+XTB - XTB
+ETFBCASH - BETA ETF Obligacji 6M
+ETFBDIVPL - BETA ETF Dywidenda Plus
+ETFBM40TR - BETA ETF mWIG40TR
+ETFBNDXPL - BETA ETF Nasdaq-100 PLN-Hedged
+ETFBNQ2ST - BETA ETF Nasdaq-100 2xShort
+ETFBNQ3LV - BETA ETF Nasdaq-100 3xLev
+ETFBS80TR - BETA ETF sWIG80TR
+ETFBSPXPL - BETA ETF S&P500 PLN-Hedged
+ETFBTBSP - BETA ETF TBSP
+ETFBTCPL - BETA ETF Bitcoin
+ETFBW20LV - BETA ETF WIG20lev
+ETFBW20ST - BETA ETF WIG20short
+ETFBW20TR - BETA ETF WIG20TR
