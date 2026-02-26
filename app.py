@@ -22,10 +22,13 @@ slownik_nazw = {
 fraza = st.text_input("🔍 Wpisz nazwę firmy lub skrót giełdowy:", "DIGITAL NETWORK").strip().upper()
 
 if st.button("Skanuj"):
+    # Ustalanie symbolu i nazwy bez odpytywania zablokowanego API Yahoo o "info"
     if fraza in slownik_nazw:
         symbol = slownik_nazw[fraza]
+        pelna_nazwa = fraza 
     else:
         symbol = fraza + ".WA" if "." not in fraza and not fraza.startswith("^") else fraza
+        pelna_nazwa = symbol 
 
     with st.spinner(f'Pobieram dane dla {symbol}...'):
         stock = yf.Ticker(symbol)
@@ -38,11 +41,11 @@ if st.button("Skanuj"):
             if not df_us.empty:
                 df = df_us
                 symbol = symbol_us
+                pelna_nazwa = symbol
 
         if df.empty:
             st.error(f"❌ Brak danych dla '{fraza}'. Spróbuj innej nazwy.")
         else:
-            pelna_nazwa = stock.info.get('longName', symbol)
             ostatnia_cena = df['Close'].iloc[-1]
 
             # Obliczenia Bollinger i MACD
