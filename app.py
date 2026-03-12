@@ -1,7 +1,8 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import warnings
 import os
 
@@ -11,7 +12,7 @@ st.set_page_config(page_title="Skaner GPW PRO", layout="wide")
 st.title("📈 Profesjonalny Skaner Giełdowy GPW")
 
 # --- WCZYTYWANIE BAZY Z PLIKU TXT ---
-@st.cache_data # Zapamiętuje dane, żeby nie czytać pliku przy każdym kliknięciu
+@st.cache_data
 def wczytaj_spolki():
     baza = []
     if os.path.exists("spolki.txt"):
@@ -22,7 +23,6 @@ def wczytaj_spolki():
     return baza
 
 lista_spolek = wczytaj_spolki()
-# Dodajemy opcję awaryjną na samej górze listy dla ETF-ów i giełd z USA
 opcje_wyboru = ["--- Wpisz własny ticker (np. z USA lub ETF) ---"] + lista_spolek
 
 tab1, tab2 = st.tabs(["🔍 Analiza Spółki (Skaner PRO)", "📡 Radar Okazji (Cały Rynek)"])
@@ -31,10 +31,14 @@ tab1, tab2 = st.tabs(["🔍 Analiza Spółki (Skaner PRO)", "📡 Radar Okazji (
 # ZAKŁADKA 1: SKANER JEDNEJ SPÓŁKI
 # ==========================================
 with tab1:
-    # Używamy inteligentnego pola wyboru z wbudowanym autouzupełnianiem
-    wybor = st.selectbox("🔍 Wybierz spółkę z listy (zacznij wpisywać, by wyszukać):", opcje_wyboru)
+    col_wyszukiwarka, col_okres = st.columns([3, 1])
+    
+    with col_wyszukiwarka:
+        wybor = st.selectbox("🔍 Wybierz spółkę z listy:", opcje_wyboru)
+    with col_okres:
+        # NOWOŚĆ: Wybór dłuższego okresu!
+        okres = st.selectbox("📅 Zakres danych:", ["1y", "2y", "5y", "max"], index=1)
 
-    # Logika sprawdzania, co wybrał użytkownik
     if wybor == "--- Wpisz własny ticker (np. z USA lub ETF) ---":
         fraza = st.text_input("Wpisz skrót giełdowy (np. AAPL, ETFSP500):", "").strip().upper()
         uruchom = st.button("Skanuj Własny Ticker")
@@ -42,7 +46,6 @@ with tab1:
             symbol = fraza + ".WA" if "." not in fraza and not fraza.startswith("^") else fraza
             pelna_nazwa = symbol
     else:
-        # Rozbijamy "ALE - Allegro" na "ALE" i "Allegro"
         czesc = wybor.split(" - ", 1)
         ticker = czesc[0].strip()
         pelna_nazwa = czesc[1].strip()
@@ -51,18 +54,18 @@ with tab1:
         uruchom = st.button(f"Skanuj spółkę: {pelna_nazwa}")
 
     if uruchom and fraza:
-        with st.spinner(f'Pobieram dane dla {symbol}...'):
+        with st.spinner(f'Pobieram dane dla {symbol} (Okres: {okres})...'):
             stock = yf.Ticker(symbol)
-            df = stock.history(period="1y")
+            df = stock.history(period=okres)
 
             if df.empty and symbol.endswith(".WA"):
                 symbol_us = symbol.replace(".WA", "")
                 stock_us = yf.Ticker(symbol_us)
-                df_us = stock_us.history(period="1y")
+                df_us = stock_us.history(period=okres)
                 if not df_us.empty:
                     df = df_us
                     symbol = symbol_us
-                    if pelna_nazwa == symbol + ".WA": # Jeśli wpisano z palca
+                    if pelna_nazwa == symbol + ".WA": 
                         pelna_nazwa = symbol
 
             if df.empty:
@@ -70,6 +73,7 @@ with tab1:
             else:
                 ostatnia_cena = df['Close'].iloc[-1]
 
+                # --- OBLICZENIA WSKAŹNIKÓW ---
                 df['SMA_20'] = df['Close'].rolling(window=20).mean()
                 df['STD_20'] = df['Close'].rolling(window=20).std()
                 df['Upper_BB'] = df['SMA_20'] + (df['STD_20'] * 2)
@@ -93,25 +97,39 @@ with tab1:
                 col2.metric("Wstęgi Bollingera", bb_status)
                 col3.metric("Wskaźnik MACD", macd_status)
 
-                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 7), gridspec_kw={'height_ratios': [3, 1.5]})
-                
-                ax1.plot(df.index, df['Close'], label='Cena', color='#1f77b4', linewidth=2)
-                ax1.plot(df.index, df['Upper_BB'], label='Górna Wstęga (Opór)', color='red', linestyle=':', alpha=0.7)
-                ax1.plot(df.index, df['Lower_BB'], label='Dolna Wstęga (Wsparcie)', color='green', linestyle=':', alpha=0.7)
-                ax1.fill_between(df.index, df['Lower_BB'], df['Upper_BB'], color='gray', alpha=0.1)
-                ax1.set_title(f"Notowania giełdowe: {pelna_nazwa}", fontsize=12)
-                ax1.legend(loc='upper left')
-                ax1.grid(True, linestyle=':', alpha=0.6)
+                # ==========================================
+                # INTERAKTYWNY WYKRES PLOTLY
+                # ==========================================
+                fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
+                                    vertical_spacing=0.05, row_heights=[0.7, 0.3],
+                                    subplot_titles=(f"Notowania (Bollinger Bands)", "MACD"))
 
-                colors = ['green' if val >= 0 else 'red' for val in df['MACD_Hist']]
-                ax2.bar(df.index, df['MACD_Hist'], color=colors, alpha=0.5, label='Siła Trendu')
-                ax2.plot(df.index, df['MACD'], label='MACD (Szybka)', color='blue')
-                ax2.plot(df.index, df['Signal'], label='Sygnał (Wolna)', color='orange')
-                ax2.legend(loc='upper left')
-                ax2.grid(True, linestyle=':', alpha=0.6)
+                # 1. Cena (Linia)
+                fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', 
+                                         name='Cena', line=dict(color='#1f77b4', width=2)), row=1, col=1)
                 
-                plt.tight_layout()
-                st.pyplot(fig)
+                # 2. Wstęgi Bollingera (z półprzezroczystym wypełnieniem)
+                fig.add_trace(go.Scatter(x=df.index, y=df['Upper_BB'], mode='lines', 
+                                         name='Górna Wstęga', line=dict(color='rgba(255, 0, 0, 0.5)', width=1, dash='dot')), row=1, col=1)
+                
+                fig.add_trace(go.Scatter(x=df.index, y=df['Lower_BB'], mode='lines', 
+                                         name='Dolna Wstęga', line=dict(color='rgba(0, 128, 0, 0.5)', width=1, dash='dot'), 
+                                         fill='tonexty', fillcolor='rgba(128, 128, 128, 0.1)'), row=1, col=1)
+
+                # 3. MACD
+                kolory_macd = ['green' if val >= 0 else 'red' for val in df['MACD_Hist']]
+                fig.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], name='Siła Trendu', marker_color=kolory_macd), row=2, col=1)
+                fig.add_trace(go.Scatter(x=df.index, y=df['MACD'], mode='lines', name='MACD', line=dict(color='blue', width=1.5)), row=2, col=1)
+                fig.add_trace(go.Scatter(x=df.index, y=df['Signal'], mode='lines', name='Sygnał', line=dict(color='orange', width=1.5)), row=2, col=1)
+
+                # Ustawienia wyglądu i interaktywności
+                fig.update_layout(height=700, margin=dict(l=20, r=20, t=40, b=20), 
+                                  hovermode='x unified', # Lupa najeżdżająca na wszystkie dane
+                                  showlegend=False)
+                fig.update_xaxes(rangeslider_visible=False) # Ukrywa suwak na dole dla czystszego widoku
+                
+                # Renderowanie wykresu na stronie
+                st.plotly_chart(fig, use_container_width=True)
 
                 with st.expander("📖 JAK ODCZYTYWAĆ WSKAŹNIKI? (Legenda)"):
                     st.markdown("""
@@ -122,6 +140,8 @@ with tab1:
                     **2. MACD (Dolny wykres)**
                     * 🟢 **Sygnał KUPNA:** Niebieska linia przecina pomarańczową od dołu. Słupki stają się zielone.
                     * 🔴 **Sygnał SPRZEDAŻY:** Niebieska linia spada poniżej pomarańczowej. Słupki stają się czerwone.
+                    
+                    🖱️ **TIP:** *Możesz zaznaczać palcem/myszką wybrany fragment wykresu, aby go powiększyć!*
                     """)
 
 # ==========================================
@@ -129,8 +149,6 @@ with tab1:
 # ==========================================
 with tab2:
     st.markdown("### 📡 Zeskanuj swoją listę spółek w poszukiwaniu okazji")
-    
-    # Radar korzysta teraz z tickerów wyciągniętych prosto z pliku spolki.txt!
     spolki_radar = [linia.split(" - ")[0].strip() + ".WA" for linia in lista_spolek]
 
     st.write(f"Ten radar przeanalizuje w tle **{len(spolki_radar)}** spółek dodanych do Twojego pliku `spolki.txt`.")
@@ -139,9 +157,8 @@ with tab2:
         if len(spolki_radar) == 0:
             st.error("Twoja lista spółek jest pusta! Dodaj firmy do pliku spolki.txt.")
         else:
-            with st.spinner('Pobieram pakiety danych z giełdy...'):
+            with st.spinner('Pobieram pakiety danych z giełdy (Ostatnie 6 miesięcy)...'):
                 dane_rynku = yf.download(spolki_radar, period="6mo", progress=False)
-                # Obsługa struktury danych z yfinance dla jednej vs wielu spółek
                 if len(spolki_radar) == 1:
                     ceny_zamkniecia = pd.DataFrame({spolki_radar[0]: dane_rynku['Close']})
                 else:
@@ -177,7 +194,6 @@ with tab2:
                         if sygnal_bb or sygnal_macd:
                             sila = "⭐⭐⭐ POTĘŻNY" if (sygnal_bb and sygnal_macd) else "⭐⭐ DOBRY" if sygnal_macd else "⭐ SŁABY"
                             
-                            # Wyciągamy ładną nazwę spółki na podstawie tickera
                             nazwa_dla_radaru = ticker.replace(".WA", "")
                             for linia in lista_spolek:
                                 if linia.startswith(nazwa_dla_radaru + " -"):
@@ -202,3 +218,4 @@ with tab2:
                     st.dataframe(df_wyniki, use_container_width=True)
                 else:
                     st.warning("🤷‍♂️ W tym momencie żadna z obserwowanych przez Ciebie spółek nie generuje silnego sygnału kupna.")
+
