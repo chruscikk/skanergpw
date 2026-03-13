@@ -25,7 +25,11 @@ def wczytaj_spolki():
 lista_spolek = wczytaj_spolki()
 opcje_wyboru = ["--- Wpisz własny ticker (np. z USA lub ETF) ---"] + lista_spolek
 
-tab1, tab2 = st.tabs(["🔍 Analiza Spółki (Skaner PRO)", "📡 Radar Okazji (Cały Rynek)"])
+# --- PAMIĘĆ SESJI DLA ULUBIONYCH ---
+if 'ulubione_zapisane' not in st.session_state:
+    st.session_state['ulubione_zapisane'] = []
+
+tab1, tab2, tab3 = st.tabs(["🔍 Analiza Spółki", "📡 Radar Okazji", "⭐ Moje Ulubione"])
 
 # ==========================================
 # ZAKŁADKA 1: SKANER JEDNEJ SPÓŁKI
@@ -36,8 +40,7 @@ with tab1:
     with col_wyszukiwarka:
         wybor = st.selectbox("🔍 Wybierz spółkę z listy:", opcje_wyboru)
     with col_okres:
-        # NOWOŚĆ: Wybór dłuższego okresu!
-        okres = st.selectbox("📅 Zakres danych:", ["1y", "2y", "5y", "max"], index=1)
+        okres = st.selectbox("📅 Zakres danych:", ["1mo", "6mo", "1y", "2y", "5y", "max"], index=3)
 
     if wybor == "--- Wpisz własny ticker (np. z USA lub ETF) ---":
         fraza = st.text_input("Wpisz skrót giełdowy (np. AAPL, ETFSP500):", "").strip().upper()
@@ -73,7 +76,6 @@ with tab1:
             else:
                 ostatnia_cena = df['Close'].iloc[-1]
 
-                # --- OBLICZENIA WSKAŹNIKÓW ---
                 df['SMA_20'] = df['Close'].rolling(window=20).mean()
                 df['STD_20'] = df['Close'].rolling(window=20).std()
                 df['Upper_BB'] = df['SMA_20'] + (df['STD_20'] * 2)
@@ -97,18 +99,13 @@ with tab1:
                 col2.metric("Wstęgi Bollingera", bb_status)
                 col3.metric("Wskaźnik MACD", macd_status)
 
-                # ==========================================
-                # INTERAKTYWNY WYKRES PLOTLY
-                # ==========================================
                 fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
                                     vertical_spacing=0.05, row_heights=[0.7, 0.3],
                                     subplot_titles=(f"Notowania (Bollinger Bands)", "MACD"))
 
-                # 1. Cena (Linia)
                 fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', 
                                          name='Cena', line=dict(color='#1f77b4', width=2)), row=1, col=1)
                 
-                # 2. Wstęgi Bollingera (z półprzezroczystym wypełnieniem)
                 fig.add_trace(go.Scatter(x=df.index, y=df['Upper_BB'], mode='lines', 
                                          name='Górna Wstęga', line=dict(color='rgba(255, 0, 0, 0.5)', width=1, dash='dot')), row=1, col=1)
                 
@@ -116,39 +113,22 @@ with tab1:
                                          name='Dolna Wstęga', line=dict(color='rgba(0, 128, 0, 0.5)', width=1, dash='dot'), 
                                          fill='tonexty', fillcolor='rgba(128, 128, 128, 0.1)'), row=1, col=1)
 
-                # 3. MACD
                 kolory_macd = ['green' if val >= 0 else 'red' for val in df['MACD_Hist']]
                 fig.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], name='Siła Trendu', marker_color=kolory_macd), row=2, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['MACD'], mode='lines', name='MACD', line=dict(color='blue', width=1.5)), row=2, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['Signal'], mode='lines', name='Sygnał', line=dict(color='orange', width=1.5)), row=2, col=1)
 
-                # Ustawienia wyglądu i interaktywności
                 fig.update_layout(height=700, margin=dict(l=20, r=20, t=40, b=20), 
-                                  hovermode='x unified', # Lupa najeżdżająca na wszystkie dane
-                                  showlegend=False)
-                fig.update_xaxes(rangeslider_visible=False) # Ukrywa suwak na dole dla czystszego widoku
+                                  hovermode='x unified', showlegend=False)
+                fig.update_xaxes(rangeslider_visible=False)
                 
-                # Renderowanie wykresu na stronie
                 st.plotly_chart(fig, use_container_width=True)
-
-                with st.expander("📖 JAK ODCZYTYWAĆ WSKAŹNIKI? (Legenda)"):
-                    st.markdown("""
-                    **1. WSTĘGI BOLLINGERA (Górny wykres)**
-                    * 🟢 **Dolna wstęga (zielona kropkowana):** Jeśli cena do niej spada, akcje są "wyprzedane". Zwiększa się szansa na odbicie ceny w górę.
-                    * 🔴 **Górna wstęga (czerwona kropkowana):** Jeśli cena do niej dociera, akcje są "za drogie". Ryzyko spadku.
-
-                    **2. MACD (Dolny wykres)**
-                    * 🟢 **Sygnał KUPNA:** Niebieska linia przecina pomarańczową od dołu. Słupki stają się zielone.
-                    * 🔴 **Sygnał SPRZEDAŻY:** Niebieska linia spada poniżej pomarańczowej. Słupki stają się czerwone.
-                    
-                    🖱️ **TIP:** *Możesz zaznaczać palcem/myszką wybrany fragment wykresu, aby go powiększyć!*
-                    """)
 
 # ==========================================
 # ZAKŁADKA 2: RADAR OKAZJI
 # ==========================================
 with tab2:
-    st.markdown("### 📡 Zeskanuj swoją listę spółek w poszukiwaniu okazji")
+    st.markdown("### 📡 Zeskanuj swoją listę spółek")
     spolki_radar = [linia.split(" - ")[0].strip() + ".WA" for linia in lista_spolek]
 
     st.write(f"Ten radar przeanalizuje w tle **{len(spolki_radar)}** spółek dodanych do Twojego pliku `spolki.txt`.")
@@ -157,7 +137,7 @@ with tab2:
         if len(spolki_radar) == 0:
             st.error("Twoja lista spółek jest pusta! Dodaj firmy do pliku spolki.txt.")
         else:
-            with st.spinner('Pobieram pakiety danych z giełdy (Ostatnie 6 miesięcy)...'):
+            with st.spinner('Pobieram pakiety danych z giełdy...'):
                 dane_rynku = yf.download(spolki_radar, period="6mo", progress=False)
                 if len(spolki_radar) == 1:
                     ceny_zamkniecia = pd.DataFrame({spolki_radar[0]: dane_rynku['Close']})
@@ -169,9 +149,7 @@ with tab2:
                 for ticker in spolki_radar:
                     try:
                         historia_cen = ceny_zamkniecia[ticker].dropna()
-                        if len(historia_cen) < 50:
-                            continue
-                            
+                        if len(historia_cen) < 50: continue
                         cena = historia_cen.iloc[-1]
 
                         sma20 = historia_cen.rolling(window=20).mean().iloc[-1]
@@ -184,16 +162,13 @@ with tab2:
                         signal = macd.ewm(span=9, adjust=False).mean()
                         hist = macd - signal
 
-                        ost_macd = macd.iloc[-1]
-                        ost_signal = signal.iloc[-1]
-                        ost_hist = hist.iloc[-1]
+                        ost_macd, ost_signal, ost_hist = macd.iloc[-1], signal.iloc[-1], hist.iloc[-1]
 
-                        sygnal_bb = cena <= (ost_lower * 1.03) 
+                        sygnal_bb = cena <= (ost_lower * 1.02) 
                         sygnal_macd = ost_macd > ost_signal and ost_hist > 0
 
                         if sygnal_bb or sygnal_macd:
                             sila = "⭐⭐⭐ POTĘŻNY" if (sygnal_bb and sygnal_macd) else "⭐⭐ DOBRY" if sygnal_macd else "⭐ SŁABY"
-                            
                             nazwa_dla_radaru = ticker.replace(".WA", "")
                             for linia in lista_spolek:
                                 if linia.startswith(nazwa_dla_radaru + " -"):
@@ -217,5 +192,81 @@ with tab2:
                     st.success("🎯 Znalazłem następujące okazje na rynku:")
                     st.dataframe(df_wyniki, use_container_width=True)
                 else:
-                    st.warning("🤷‍♂️ W tym momencie żadna z obserwowanych przez Ciebie spółek nie generuje silnego sygnału kupna.")
+                    st.warning("🤷‍♂️ Żadna z obserwowanych przez Ciebie spółek nie generuje silnego sygnału kupna.")
 
+# ==========================================
+# ZAKŁADKA 3: MOJE ULUBIONE (Pulpit nawigacyjny)
+# ==========================================
+with tab3:
+    st.markdown("### ⭐ Panel Obserwowanych Spółek")
+    st.write("Wybierz poniżej spółki, które chcesz mieć stale na oku. Aplikacja zapamięta ten wybór na czas trwania Twojej sesji w przeglądarce.")
+    
+    # Multiselect do zarządzania ulubionymi
+    wybrane_ulubione = st.multiselect(
+        "Wybierz spółki do panelu:", 
+        lista_spolek, 
+        default=st.session_state['ulubione_zapisane']
+    )
+    
+    # Zapisujemy zmiany do pamięci sesji
+    st.session_state['ulubione_zapisane'] = wybrane_ulubione
+
+    if len(wybrane_ulubione) > 0:
+        if st.button("🔄 Pobierz aktualne dane dla ulubionych"):
+            with st.spinner("Pobieram najświeższe dane..."):
+                tickers_ulubione = [x.split(" - ")[0].strip() + ".WA" for x in wybrane_ulubione]
+                
+                # Szybkie pobieranie paczką tak jak w radarze
+                dane_ulubione = yf.download(tickers_ulubione, period="6mo", progress=False)
+                if len(tickers_ulubione) == 1:
+                    ceny_ulubione = pd.DataFrame({tickers_ulubione[0]: dane_ulubione['Close']})
+                else:
+                    ceny_ulubione = dane_ulubione['Close']
+                
+                wyniki_ulubione = []
+                
+                for ticker, oryginalna_nazwa in zip(tickers_ulubione, wybrane_ulubione):
+                    try:
+                        historia = ceny_ulubione[ticker].dropna()
+                        if len(historia) < 50: continue
+                        cena = historia.iloc[-1]
+
+                        # Obliczenia Bollinger
+                        sma20 = historia.rolling(window=20).mean().iloc[-1]
+                        std20 = historia.rolling(window=20).std().iloc[-1]
+                        ost_lower, ost_upper = sma20 - (std20 * 2), sma20 + (std20 * 2)
+
+                        # Obliczenia MACD
+                        ema12 = historia.ewm(span=12, adjust=False).mean()
+                        ema26 = historia.ewm(span=26, adjust=False).mean()
+                        macd = ema12 - ema26
+                        signal = macd.ewm(span=9, adjust=False).mean()
+                        hist = macd - signal
+
+                        ost_macd, ost_signal, ost_hist = macd.iloc[-1], signal.iloc[-1], hist.iloc[-1]
+
+                        # Logika statusów (Zmieniona na krótkie, opisowe komunikaty do tabeli)
+                        if cena <= ost_lower * 1.02: bb_stat = "🟢 Wyprzedana"
+                        elif cena >= ost_upper * 0.98: bb_stat = "🔴 Przegrzana"
+                        else: bb_stat = "🟡 Neutralna"
+
+                        if ost_macd > ost_signal and ost_hist > 0: macd_stat = "🟢 Wzrostowy"
+                        elif ost_macd < ost_signal and ost_hist < 0: macd_stat = "🔴 Spadkowy"
+                        else: macd_stat = "🟡 Zmiana trendu"
+
+                        wyniki_ulubione.append({
+                            "Spółka": oryginalna_nazwa.split(" - ")[1].strip(),
+                            "Symbol": ticker.replace(".WA", ""),
+                            "Ostatnia Cena": f"{cena:.2f} PLN",
+                            "Bollinger": bb_stat,
+                            "MACD": macd_stat
+                        })
+                    except Exception:
+                        continue
+
+                if len(wyniki_ulubione) > 0:
+                    st.markdown("#### 📊 Aktualny stan Twoich ulubionych:")
+                    # Wyświetlamy jako ładną, pozbawioną indeksu tabelę
+                    st.dataframe(pd.DataFrame(wyniki_ulubione), use_container_width=True, hide_index=True)
+    else:
+        st.info("👆 Dodaj wyżej pierwsze spółki do obserwowanych, aby zobaczyć podsumowanie.")
