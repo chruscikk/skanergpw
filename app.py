@@ -25,7 +25,7 @@ def wczytaj_spolki():
 lista_spolek = wczytaj_spolki()
 opcje_wyboru = ["--- Wpisz własny ticker (np. z USA lub ETF) ---"] + lista_spolek
 
-# Mamy tylko 2 zakładki
+# Mamy 2 zakładki
 tab1, tab2 = st.tabs(["🔍 Analiza Spółki (Skaner PRO)", "📡 Radar Okazji (Cały Rynek)"])
 
 # ==========================================
@@ -100,7 +100,6 @@ with tab1:
                                     vertical_spacing=0.05, row_heights=[0.7, 0.3],
                                     subplot_titles=(f"Notowania (Bollinger Bands)", "MACD"))
 
-                # AS NR 1: WYKRESY ŚWIECOWE (CANDLESTICK)
                 fig.add_trace(go.Candlestick(x=df.index,
                                              open=df['Open'],
                                              high=df['High'],
@@ -120,25 +119,26 @@ with tab1:
                 fig.add_trace(go.Scatter(x=df.index, y=df['MACD'], mode='lines', name='MACD', line=dict(color='blue', width=1.5)), row=2, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['Signal'], mode='lines', name='Sygnał', line=dict(color='orange', width=1.5)), row=2, col=1)
 
-                fig.update_layout(height=700, margin=dict(l=20, r=20, t=40, b=20), 
-                                  hovermode='x unified', showlegend=False, xaxis_rangeslider_visible=False)
+                # WŁĄCZENIE POZIOMEGO SUWAKA
+                fig.update_layout(height=750, margin=dict(l=20, r=20, t=40, b=20), 
+                                  hovermode='x unified', showlegend=False)
+                fig.update_xaxes(rangeslider_visible=False, row=1, col=1) # Ukrywamy suwak na górnym wykresie...
+                fig.update_xaxes(rangeslider_visible=True, rangeslider_thickness=0.05, row=2, col=1) # ...i włączamy go pod dolnym!
                 
-                st.plotly_chart(fig, use_container_width=True)
+                # Dodano config={'scrollZoom': True} dla wygodniejszej pracy palcem i myszką
+                st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
 
-                with st.expander("📖 JAK ODCZYTYWAĆ WSKAŹNIKI? (Legenda)"):
+                with st.expander("📖 JAK NAWIGOWAĆ PO WYKRESIE? (Legenda)"):
                     st.markdown("""
-                    **1. ŚWIECE JAPOŃSKIE**
-                    * 🟢 **Zielona:** Cena wzrosła. Dół prostokąta to otwarcie, góra to zamknięcie.
-                    * 🔴 **Czerwona:** Cena spadła. Góra prostokąta to otwarcie, dół to zamknięcie.
-                    * **Knoty (kreski):** Pokazują absolutne maksimum i minimum ceny z danego dnia.
-
-                    **2. WSTĘGI BOLLINGERA (Górny wykres)**
-                    * 🟢 **Dolna wstęga (zielona kropkowana):** Jeśli cena do niej spada, akcje są "wyprzedane". Zwiększa się szansa na odbicie ceny w górę.
-                    * 🔴 **Górna wstęga (czerwona kropkowana):** Jeśli cena do niej dociera, akcje są "za drogie". Ryzyko spadku.
-
-                    **3. MACD (Dolny wykres)**
-                    * 🟢 **Sygnał KUPNA:** Niebieska linia przecina pomarańczową od dołu. Słupki stają się zielone.
-                    * 🔴 **Sygnał SPRZEDAŻY:** Niebieska linia spada poniżej pomarańczowej. Słupki stają się czerwone.
+                    **Nawigacja i suwaki:**
+                    * ↔️ **Poziomy suwak:** Znajduje się na samym dole. Złap za jego krawędzie, by ustalić, jaki okres chcesz przybliżyć.
+                    * ↕️ **Pionowy suwak:** Złap palcem lub myszką za **oś z cenami (cyferki po prawej stronie)** i pociągnij w górę lub w dół, aby rozciągnąć lub spłaszczyć świece!
+                    * 🖱️ **Przesuwanie (Pan):** Użyj ikonki dłoni w prawym górnym rogu wykresu, aby móc swobodnie ciągnąć wykres we wszystkie strony.
+                    
+                    **Wskaźniki:**
+                    * 🟢 **Dolna wstęga (Bollinger):** Wyprzedanie = szansa na wzrost.
+                    * 🔴 **Górna wstęga (Bollinger):** Przegrzanie = ryzyko spadku.
+                    * 🟢 **MACD (Dolny panel):** Zielone słupki i przecięcie w górę to sygnał kupna.
                     """)
 
 # ==========================================
@@ -209,7 +209,6 @@ with tab2:
                     st.success("🎯 Znalazłem następujące okazje na rynku:")
                     st.dataframe(df_wyniki, use_container_width=True)
                     
-                    # AS NR 2: EKSPORT DO EXCELA (CSV)
                     csv = df_wyniki.to_csv(index=False).encode('utf-8')
                     st.download_button(
                         label="📥 Pobierz raport wyników jako plik CSV (Do Excela)",
