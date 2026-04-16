@@ -34,7 +34,6 @@ tab1, tab2, tab3 = st.tabs(["🔍 Analiza Spółki (Skaner PRO)", "📡 Radar Ok
 # ZAKŁADKA 1: SKANER JEDNEJ SPÓŁKI
 # ==========================================
 with tab1:
-    # Zmieniony podział na 3 kolumny, by zmieścić nowy wybór wykresu
     col_wyszukiwarka, col_okres, col_wykres = st.columns([2, 1, 1])
     
     with col_wyszukiwarka:
@@ -105,7 +104,6 @@ with tab1:
                                     vertical_spacing=0.05, row_heights=[0.7, 0.3],
                                     subplot_titles=(f"Notowania (Bollinger Bands)", "MACD"))
 
-                # LOGIKA ZMIANY WYKRESU (Świece vs Linia)
                 if typ_wykresu == "Świecowy":
                     fig.add_trace(go.Candlestick(x=df.index,
                                                  open=df['Open'],
@@ -117,7 +115,6 @@ with tab1:
                     fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', 
                                              name='Cena', line=dict(color='#1f77b4', width=2)), row=1, col=1)
                 
-                # Wstęgi Bollingera (Rysowane niezależnie od typu wykresu)
                 fig.add_trace(go.Scatter(x=df.index, y=df['Upper_BB'], mode='lines', 
                                          name='Górna Wstęga', line=dict(color='rgba(255, 0, 0, 0.5)', width=1, dash='dot')), row=1, col=1)
                 
@@ -219,7 +216,7 @@ with tab2:
                     
                     csv = df_wyniki.to_csv(index=False).encode('utf-8')
                     st.download_button(
-                        label="📥 Pobierz raport wyników jako plik CSV (Do Excela)",
+                        label="📥 Pobierz raport wyników jako plik CSV",
                         data=csv,
                         file_name='radar_okazji_gpw.csv',
                         mime='text/csv',
@@ -232,41 +229,32 @@ with tab2:
 # ZAKŁADKA 3: WIADOMOŚCI Z RYNKU (RSS)
 # ==========================================
 with tab3:
-    st.markdown("### 📰 Najświeższe komunikaty ze spółek GPW")
-    st.write("Najnowsze informacje, zapowiedzi i raporty. Zaktualizuj stronę, by pobrać najświeższe dane.")
+    st.markdown("### 📰 Najświeższe komunikaty rynkowe (Wiadomości Google)")
+    st.write("Wiadomości finansowe z polskiego internetu zebrane przez Google News. Odśwież stronę, by pobrać najświeższe dane.")
 
-    # Funkcja zabezpieczona przed blokadami (Requests + User-Agent + Fallback Stooq)
+    # NOWE ROZWIĄZANIE: Google News nie blokuje serwerów chmurowych!
     @st.cache_data(ttl=600) 
     def pobierz_wiadomosci():
         wiadomosci = []
+        # Zapytanie do Google News (szukamy fraz: GPW, giełda, spółki)
+        url_google_news = "https://news.google.com/rss/search?q=GPW+OR+Giełda+Papierów+Wartościowych+OR+KNF&hl=pl&gl=PL&ceid=PL:pl"
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'}
         
-        # Próba 1: Bankier.pl
         try:
-            url_bankier = "https://www.bankier.pl/rss/spolki.xml"
-            response = requests.get(url_bankier, headers=headers, timeout=5)
+            response = requests.get(url_google_news, headers=headers, timeout=5)
             root = ET.fromstring(response.content)
-            for item in root.findall('./channel/item')[:15]:
+            for item in root.findall('./channel/item')[:20]: # Pobieramy 20 najnowszych
                 tytul = item.find('title').text
                 link = item.find('link').text
                 data_publikacji = item.find('pubDate').text
+                
+                # Czyścimy tytuł z nazwy portalu na końcu (Google często dodaje "- NazwaPortalu")
+                if " - " in tytul:
+                    tytul = tytul.rsplit(" - ", 1)[0]
+                    
                 wiadomosci.append({"tytul": tytul, "link": link, "data": data_publikacji})
-            return wiadomosci
-        except Exception:
-            pass # Jeśli zablokowane, idziemy dalej
-            
-        # Próba 2: Stooq.pl (Niezawodny Fallback)
-        try:
-            url_stooq = "https://stooq.pl/n/rss/?c=1&t=c"
-            response = requests.get(url_stooq, headers=headers, timeout=5)
-            root = ET.fromstring(response.content)
-            for item in root.findall('./channel/item')[:15]:
-                tytul = item.find('title').text
-                link = item.find('link').text
-                data_publikacji = item.find('pubDate').text
-                wiadomosci.append({"tytul": tytul, "link": link, "data": data_publikacji})
-        except Exception:
-            st.error("❌ Serwer giełdowy tymczasowo zablokował zapytania. Spróbuj ponownie za kilka minut.")
+        except Exception as e:
+            st.error("❌ Problem z połączeniem z Google News. Spróbuj odświeżyć stronę za chwilę.")
             
         return wiadomosci
 
