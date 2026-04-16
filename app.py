@@ -5,6 +5,9 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import warnings
 import os
+import urllib.request
+import xml.etree.ElementTree as ET
+from datetime import datetime
 
 warnings.filterwarnings('ignore')
 
@@ -25,8 +28,8 @@ def wczytaj_spolki():
 lista_spolek = wczytaj_spolki()
 opcje_wyboru = ["--- Wpisz własny ticker (np. z USA lub ETF) ---"] + lista_spolek
 
-# Mamy 2 zakładki
-tab1, tab2 = st.tabs(["🔍 Analiza Spółki (Skaner PRO)", "📡 Radar Okazji (Cały Rynek)"])
+# Mamy 3 zakładki
+tab1, tab2, tab3 = st.tabs(["🔍 Analiza Spółki (Skaner PRO)", "📡 Radar Okazji (Cały Rynek)", "📰 Wiadomości (GPW)"])
 
 # ==========================================
 # ZAKŁADKA 1: SKANER JEDNEJ SPÓŁKI
@@ -105,7 +108,7 @@ with tab1:
                                              high=df['High'],
                                              low=df['Low'],
                                              close=df['Close'],
-                                             name='Świece japońskie'), row=1, col=1)
+                                             name='Świece'), row=1, col=1)
                 
                 fig.add_trace(go.Scatter(x=df.index, y=df['Upper_BB'], mode='lines', 
                                          name='Górna Wstęga', line=dict(color='rgba(255, 0, 0, 0.5)', width=1, dash='dot')), row=1, col=1)
@@ -119,27 +122,12 @@ with tab1:
                 fig.add_trace(go.Scatter(x=df.index, y=df['MACD'], mode='lines', name='MACD', line=dict(color='blue', width=1.5)), row=2, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['Signal'], mode='lines', name='Sygnał', line=dict(color='orange', width=1.5)), row=2, col=1)
 
-                # WŁĄCZENIE POZIOMEGO SUWAKA
                 fig.update_layout(height=750, margin=dict(l=20, r=20, t=40, b=20), 
                                   hovermode='x unified', showlegend=False)
-                fig.update_xaxes(rangeslider_visible=False, row=1, col=1) # Ukrywamy suwak na górnym wykresie...
-                fig.update_xaxes(rangeslider_visible=True, rangeslider_thickness=0.05, row=2, col=1) # ...i włączamy go pod dolnym!
+                fig.update_xaxes(rangeslider_visible=False, row=1, col=1) 
+                fig.update_xaxes(rangeslider_visible=True, rangeslider_thickness=0.05, row=2, col=1) 
                 
-                # Dodano config={'scrollZoom': True} dla wygodniejszej pracy palcem i myszką
                 st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
-
-                with st.expander("📖 JAK NAWIGOWAĆ PO WYKRESIE? (Legenda)"):
-                    st.markdown("""
-                    **Nawigacja i suwaki:**
-                    * ↔️ **Poziomy suwak:** Znajduje się na samym dole. Złap za jego krawędzie, by ustalić, jaki okres chcesz przybliżyć.
-                    * ↕️ **Pionowy suwak:** Złap palcem lub myszką za **oś z cenami (cyferki po prawej stronie)** i pociągnij w górę lub w dół, aby rozciągnąć lub spłaszczyć świece!
-                    * 🖱️ **Przesuwanie (Pan):** Użyj ikonki dłoni w prawym górnym rogu wykresu, aby móc swobodnie ciągnąć wykres we wszystkie strony.
-                    
-                    **Wskaźniki:**
-                    * 🟢 **Dolna wstęga (Bollinger):** Wyprzedanie = szansa na wzrost.
-                    * 🔴 **Górna wstęga (Bollinger):** Przegrzanie = ryzyko spadku.
-                    * 🟢 **MACD (Dolny panel):** Zielone słupki i przecięcie w górę to sygnał kupna.
-                    """)
 
 # ==========================================
 # ZAKŁADKA 2: RADAR OKAZJI
@@ -211,10 +199,52 @@ with tab2:
                     
                     csv = df_wyniki.to_csv(index=False).encode('utf-8')
                     st.download_button(
-                        label="📥 Pobierz raport wyników jako plik CSV (Do Excela)",
+                        label="📥 Pobierz raport wyników jako plik CSV",
                         data=csv,
                         file_name='radar_okazji_gpw.csv',
                         mime='text/csv',
                     )
                 else:
                     st.warning("🤷‍♂️ Żadna z obserwowanych przez Ciebie spółek nie generuje silnego sygnału kupna.")
+
+
+# ==========================================
+# ZAKŁADKA 3: WIADOMOŚCI Z RYNKU (RSS)
+# ==========================================
+with tab3:
+    st.markdown("### 📰 Najświeższe komunikaty ze spółek GPW")
+    st.write("Wiadomości, raporty finansowe i zapowiedzi premier pobierane na żywo z portali branżowych.")
+
+    # Funkcja pobierająca wiadomości (zapamiętuje je na 15 minut, żeby nie obciążać serwera)
+    @st.cache_data(ttl=900) 
+    def pobierz_wiadomosci():
+        # Używamy oficjalnego kanału RSS dla wiadomości ze spółek (Bankier.pl)
+        url = "https://www.bankier.pl/rss/spolki.xml"
+        wiadomosci = []
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req) as response:
+                xml_data = response.read()
+            
+            root = ET.fromstring(xml_data)
+            # Pobieramy 15 najnowszych artykułów
+            for item in root.findall('./channel/item')[:15]:
+                tytul = item.find('title').text
+                link = item.find('link').text
+                data_publikacji = item.find('pubDate').text
+                wiadomosci.append({"tytul": tytul, "link": link, "data": data_publikacji})
+        except Exception as e:
+            st.error("Nie udało się pobrać wiadomości. Spróbuj ponownie później.")
+        return wiadomosci
+
+    if st.button("🔄 Odśwież wiadomości"):
+        st.cache_data.clear() # Wymusza pobranie nowych danych po kliknięciu
+
+    artykuly = pobierz_wiadomosci()
+    
+    if artykuly:
+        for art in artykuly:
+            with st.container():
+                st.markdown(f"**[{art['tytul']}]({art['link']})**")
+                st.caption(f"📅 {art['data']}")
+                st.divider()
