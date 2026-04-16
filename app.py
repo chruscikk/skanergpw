@@ -5,9 +5,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import warnings
 import os
-import urllib.request
+import requests
 import xml.etree.ElementTree as ET
-from datetime import datetime
 
 warnings.filterwarnings('ignore')
 
@@ -35,12 +34,15 @@ tab1, tab2, tab3 = st.tabs(["🔍 Analiza Spółki (Skaner PRO)", "📡 Radar Ok
 # ZAKŁADKA 1: SKANER JEDNEJ SPÓŁKI
 # ==========================================
 with tab1:
-    col_wyszukiwarka, col_okres = st.columns([3, 1])
+    # Zmieniony podział na 3 kolumny, by zmieścić nowy wybór wykresu
+    col_wyszukiwarka, col_okres, col_wykres = st.columns([2, 1, 1])
     
     with col_wyszukiwarka:
         wybor = st.selectbox("🔍 Wybierz spółkę z listy:", opcje_wyboru)
     with col_okres:
         okres = st.selectbox("📅 Zakres danych:", ["1mo", "6mo", "1y", "2y", "5y", "max"], index=3)
+    with col_wykres:
+        typ_wykresu = st.selectbox("📊 Typ wykresu:", ["Świecowy", "Liniowy"])
 
     if wybor == "--- Wpisz własny ticker (np. z USA lub ETF) ---":
         fraza = st.text_input("Wpisz skrót giełdowy (np. AAPL, ETFSP500):", "").strip().upper()
@@ -103,13 +105,19 @@ with tab1:
                                     vertical_spacing=0.05, row_heights=[0.7, 0.3],
                                     subplot_titles=(f"Notowania (Bollinger Bands)", "MACD"))
 
-                fig.add_trace(go.Candlestick(x=df.index,
-                                             open=df['Open'],
-                                             high=df['High'],
-                                             low=df['Low'],
-                                             close=df['Close'],
-                                             name='Świece'), row=1, col=1)
+                # LOGIKA ZMIANY WYKRESU (Świece vs Linia)
+                if typ_wykresu == "Świecowy":
+                    fig.add_trace(go.Candlestick(x=df.index,
+                                                 open=df['Open'],
+                                                 high=df['High'],
+                                                 low=df['Low'],
+                                                 close=df['Close'],
+                                                 name='Świece'), row=1, col=1)
+                else:
+                    fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', 
+                                             name='Cena', line=dict(color='#1f77b4', width=2)), row=1, col=1)
                 
+                # Wstęgi Bollingera (Rysowane niezależnie od typu wykresu)
                 fig.add_trace(go.Scatter(x=df.index, y=df['Upper_BB'], mode='lines', 
                                          name='Górna Wstęga', line=dict(color='rgba(255, 0, 0, 0.5)', width=1, dash='dot')), row=1, col=1)
                 
@@ -128,6 +136,18 @@ with tab1:
                 fig.update_xaxes(rangeslider_visible=True, rangeslider_thickness=0.05, row=2, col=1) 
                 
                 st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
+
+                with st.expander("📖 JAK ODCZYTYWAĆ WSKAŹNIKI? (Legenda)"):
+                    st.markdown("""
+                    **Nawigacja po wykresie:**
+                    * Użyj **poziomego suwaka** na dole ekranu, by zawęzić wybrany okres.
+                    * Przytrzymaj **cyfry na prawej osi (cenę)** i pociągnij w górę lub w dół, aby rozciągnąć lub zwęzić wykres w pionie.
+
+                    **Wskaźniki:**
+                    * 🟢 **Dolna wstęga (zielona kropkowana):** Jeśli cena do niej spada, akcje są "wyprzedane". Zwiększa się szansa na odbicie ceny w górę.
+                    * 🔴 **Górna wstęga (czerwona kropkowana):** Jeśli cena do niej dociera, akcje są "za drogie". Ryzyko spadku.
+                    * 🟢 **Sygnał KUPNA (MACD):** Niebieska linia przecina pomarańczową od dołu. Słupki stają się zielone.
+                    """)
 
 # ==========================================
 # ZAKŁADKA 2: RADAR OKAZJI
@@ -199,7 +219,7 @@ with tab2:
                     
                     csv = df_wyniki.to_csv(index=False).encode('utf-8')
                     st.download_button(
-                        label="📥 Pobierz raport wyników jako plik CSV",
+                        label="📥 Pobierz raport wyników jako plik CSV (Do Excela)",
                         data=csv,
                         file_name='radar_okazji_gpw.csv',
                         mime='text/csv',
@@ -213,32 +233,45 @@ with tab2:
 # ==========================================
 with tab3:
     st.markdown("### 📰 Najświeższe komunikaty ze spółek GPW")
-    st.write("Wiadomości, raporty finansowe i zapowiedzi premier pobierane na żywo z portali branżowych.")
+    st.write("Najnowsze informacje, zapowiedzi i raporty. Zaktualizuj stronę, by pobrać najświeższe dane.")
 
-    # Funkcja pobierająca wiadomości (zapamiętuje je na 15 minut, żeby nie obciążać serwera)
-    @st.cache_data(ttl=900) 
+    # Funkcja zabezpieczona przed blokadami (Requests + User-Agent + Fallback Stooq)
+    @st.cache_data(ttl=600) 
     def pobierz_wiadomosci():
-        # Używamy oficjalnego kanału RSS dla wiadomości ze spółek (Bankier.pl)
-        url = "https://www.bankier.pl/rss/spolki.xml"
         wiadomosci = []
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'}
+        
+        # Próba 1: Bankier.pl
         try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req) as response:
-                xml_data = response.read()
-            
-            root = ET.fromstring(xml_data)
-            # Pobieramy 15 najnowszych artykułów
+            url_bankier = "https://www.bankier.pl/rss/spolki.xml"
+            response = requests.get(url_bankier, headers=headers, timeout=5)
+            root = ET.fromstring(response.content)
             for item in root.findall('./channel/item')[:15]:
                 tytul = item.find('title').text
                 link = item.find('link').text
                 data_publikacji = item.find('pubDate').text
                 wiadomosci.append({"tytul": tytul, "link": link, "data": data_publikacji})
-        except Exception as e:
-            st.error("Nie udało się pobrać wiadomości. Spróbuj ponownie później.")
+            return wiadomosci
+        except Exception:
+            pass # Jeśli zablokowane, idziemy dalej
+            
+        # Próba 2: Stooq.pl (Niezawodny Fallback)
+        try:
+            url_stooq = "https://stooq.pl/n/rss/?c=1&t=c"
+            response = requests.get(url_stooq, headers=headers, timeout=5)
+            root = ET.fromstring(response.content)
+            for item in root.findall('./channel/item')[:15]:
+                tytul = item.find('title').text
+                link = item.find('link').text
+                data_publikacji = item.find('pubDate').text
+                wiadomosci.append({"tytul": tytul, "link": link, "data": data_publikacji})
+        except Exception:
+            st.error("❌ Serwer giełdowy tymczasowo zablokował zapytania. Spróbuj ponownie za kilka minut.")
+            
         return wiadomosci
 
     if st.button("🔄 Odśwież wiadomości"):
-        st.cache_data.clear() # Wymusza pobranie nowych danych po kliknięciu
+        st.cache_data.clear() 
 
     artykuly = pobierz_wiadomosci()
     
