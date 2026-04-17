@@ -10,51 +10,82 @@ import xml.etree.ElementTree as ET
 
 warnings.filterwarnings('ignore')
 
-st.set_page_config(page_title="Skaner GPW PRO", layout="wide")
-st.title("📈 Profesjonalny Skaner Giełdowy GPW")
+st.set_page_config(page_title="Skaner Giełdowy PRO", layout="wide", initial_sidebar_state="expanded")
 
-# --- WCZYTYWANIE BAZY Z PLIKU TXT ---
+# --- UNIWERSALNA FUNKCJA WCZYTUJĄCA PLIKI ---
 @st.cache_data
-def wczytaj_spolki():
+def wczytaj_baze(nazwa_pliku):
     baza = []
-    if os.path.exists("spolki.txt"):
-        with open("spolki.txt", "r", encoding="utf-8") as f:
+    if os.path.exists(nazwa_pliku):
+        with open(nazwa_pliku, "r", encoding="utf-8") as f:
             for line in f:
                 if " - " in line:
                     baza.append(line.strip())
     return baza
 
-lista_spolek = wczytaj_spolki()
-opcje_wyboru = ["--- Wpisz własny ticker (np. z USA lub ETF) ---"] + lista_spolek
-
-# Zakładki
-tab1, tab2, tab3 = st.tabs(["🔍 Analiza Spółki (Skaner PRO)", "📡 Radar Okazji (Cały Rynek)", "📰 Wiadomości (GPW)"])
+# Wczytujemy wszystkie 3 pliki
+lista_gpw = wczytaj_baze("spolki.txt")
+lista_wig = wczytaj_baze("spolkiwig.txt")
+lista_nc = wczytaj_baze("spolkinc.txt")
 
 # ==========================================
-# ZAKŁADKA 1: SKANER JEDNEJ SPÓŁKI
+# MENU BOCZNE (SIDEBAR) - Idealne dla smartfonów
 # ==========================================
-with tab1:
-    col_wyszukiwarka, col_okres, col_wykres = st.columns([2, 1, 1])
+st.sidebar.markdown("## ⚙️ Panel Sterowania")
+st.sidebar.markdown("---")
+
+narzedzie = st.sidebar.radio("1️⃣ Wybierz moduł:", ["🔍 Skaner (Pojedyncza spółka)", "📡 Radar Okazji (Cały rynek)", "📰 Wiadomości (GPW)"])
+
+# Wybór rynku pojawia się tylko, jeśli nie jesteśmy w wiadomościach
+if narzedzie != "📰 Wiadomości (GPW)":
+    st.sidebar.markdown("---")
+    wybrany_rynek = st.sidebar.radio("2️⃣ Wybierz rynek:", ["SKANER GPW", "SKANER WIG", "SKANER NEW CONNECT"])
     
+    # Przypisywanie odpowiedniej listy do silnika
+    if wybrany_rynek == "SKANER GPW":
+        aktywna_lista = lista_gpw
+        nazwa_pliku_info = "spolki.txt"
+    elif wybrany_rynek == "SKANER WIG":
+        aktywna_lista = lista_wig
+        nazwa_pliku_info = "spolkiwig.txt"
+    else:
+        aktywna_lista = lista_nc
+        nazwa_pliku_info = "spolkinc.txt"
+
+st.sidebar.markdown("---")
+st.sidebar.info("💡 **Wskazówka:** Na telefonie możesz zwinąć to menu klikając 'X' lub przesuwając palcem w lewo, aby mieć większy wykres.")
+
+
+# ==========================================
+# GŁÓWNY EKRAN APLIKACJI
+# ==========================================
+
+# ------------------------------------------
+# NARZĘDZIE 1: SKANER
+# ------------------------------------------
+if narzedzie == "🔍 Skaner (Pojedyncza spółka)":
+    st.title(f"📈 {wybrany_rynek} - Analiza")
+    
+    opcje_wyboru = ["--- Wpisz własny ticker (np. z USA) ---"] + aktywna_lista
+    
+    col_wyszukiwarka, col_okres, col_wykres = st.columns([2, 1, 1])
     with col_wyszukiwarka:
-        wybor = st.selectbox("🔍 Wybierz spółkę z listy:", opcje_wyboru)
+        wybor = st.selectbox("🔍 Wybierz spółkę z wybranego rynku:", opcje_wyboru)
     with col_okres:
         okres = st.selectbox("📅 Zakres danych:", ["1mo", "6mo", "1y", "2y", "5y", "max"], index=3)
     with col_wykres:
         typ_wykresu = st.selectbox("📊 Typ wykresu:", ["Świecowy", "Liniowy"])
 
-    if wybor == "--- Wpisz własny ticker (np. z USA lub ETF) ---":
-        fraza = st.text_input("Wpisz skrót giełdowy (np. AAPL, ETFSP500):", "").strip().upper()
+    if wybor == "--- Wpisz własny ticker (np. z USA) ---":
+        fraza = st.text_input("Wpisz skrót giełdowy:", "").strip().upper()
         uruchom = st.button("Skanuj Własny Ticker")
         if uruchom and fraza:
             symbol = fraza + ".WA" if "." not in fraza and not fraza.startswith("^") else fraza
             pelna_nazwa = symbol
     else:
         czesc = wybor.split(" - ", 1)
-        ticker = czesc[0].strip()
-        pelna_nazwa = czesc[1].strip()
-        symbol = ticker + ".WA"
-        fraza = symbol
+        ticker, pelna_nazwa = czesc[0].strip(), czesc[1].strip()
+        symbol, fraza = ticker + ".WA", ticker + ".WA"
         uruchom = st.button(f"Skanuj spółkę: {pelna_nazwa}")
 
     if uruchom and fraza:
@@ -73,7 +104,7 @@ with tab1:
                         pelna_nazwa = symbol
 
             if df.empty:
-                st.error(f"❌ Brak danych dla '{fraza}'. Upewnij się, że skrót jest poprawny.")
+                st.error(f"❌ Brak danych dla '{fraza}'.")
             else:
                 ostatnia_cena = df['Close'].iloc[-1]
 
@@ -100,66 +131,43 @@ with tab1:
                 col2.metric("Wstęgi Bollingera", bb_status)
                 col3.metric("Wskaźnik MACD", macd_status)
 
-                fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
-                                    vertical_spacing=0.05, row_heights=[0.7, 0.3],
-                                    subplot_titles=(f"Notowania (Bollinger Bands)", "MACD"))
+                fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3], subplot_titles=(f"Notowania (Bollinger Bands)", "MACD"))
 
                 if typ_wykresu == "Świecowy":
-                    fig.add_trace(go.Candlestick(x=df.index,
-                                                 open=df['Open'],
-                                                 high=df['High'],
-                                                 low=df['Low'],
-                                                 close=df['Close'],
-                                                 name='Świece'), row=1, col=1)
+                    fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Świece'), row=1, col=1)
                 else:
-                    fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', 
-                                             name='Cena', line=dict(color='#1f77b4', width=2)), row=1, col=1)
+                    fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', name='Cena', line=dict(color='#1f77b4', width=2)), row=1, col=1)
                 
-                fig.add_trace(go.Scatter(x=df.index, y=df['Upper_BB'], mode='lines', 
-                                         name='Górna Wstęga', line=dict(color='rgba(255, 0, 0, 0.5)', width=1, dash='dot')), row=1, col=1)
-                
-                fig.add_trace(go.Scatter(x=df.index, y=df['Lower_BB'], mode='lines', 
-                                         name='Dolna Wstęga', line=dict(color='rgba(0, 128, 0, 0.5)', width=1, dash='dot'), 
-                                         fill='tonexty', fillcolor='rgba(128, 128, 128, 0.1)'), row=1, col=1)
+                fig.add_trace(go.Scatter(x=df.index, y=df['Upper_BB'], mode='lines', name='Górna Wstęga', line=dict(color='rgba(255, 0, 0, 0.5)', width=1, dash='dot')), row=1, col=1)
+                fig.add_trace(go.Scatter(x=df.index, y=df['Lower_BB'], mode='lines', name='Dolna Wstęga', line=dict(color='rgba(0, 128, 0, 0.5)', width=1, dash='dot'), fill='tonexty', fillcolor='rgba(128, 128, 128, 0.1)'), row=1, col=1)
 
                 kolory_macd = ['green' if val >= 0 else 'red' for val in df['MACD_Hist']]
                 fig.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], name='Siła Trendu', marker_color=kolory_macd), row=2, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['MACD'], mode='lines', name='MACD', line=dict(color='blue', width=1.5)), row=2, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['Signal'], mode='lines', name='Sygnał', line=dict(color='orange', width=1.5)), row=2, col=1)
 
-                fig.update_layout(height=750, margin=dict(l=20, r=20, t=40, b=20), 
-                                  hovermode='x unified', showlegend=False)
+                fig.update_layout(height=750, margin=dict(l=20, r=20, t=40, b=20), hovermode='x unified', showlegend=False)
                 fig.update_xaxes(rangeslider_visible=False, row=1, col=1) 
                 fig.update_xaxes(rangeslider_visible=True, rangeslider_thickness=0.05, row=2, col=1) 
                 
                 st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
 
-                with st.expander("📖 JAK ODCZYTYWAĆ WSKAŹNIKI? (Legenda)"):
-                    st.markdown("""
-                    **Nawigacja po wykresie:**
-                    * Użyj **poziomego suwaka** na dole ekranu, by zawęzić wybrany okres.
-                    * Przytrzymaj **cyfry na prawej osi (cenę)** i pociągnij w górę lub w dół, aby rozciągnąć lub zwęzić wykres w pionie.
 
-                    **Wskaźniki:**
-                    * 🟢 **Dolna wstęga (zielona kropkowana):** Jeśli cena do niej spada, akcje są "wyprzedane". Zwiększa się szansa na odbicie ceny w górę.
-                    * 🔴 **Górna wstęga (czerwona kropkowana):** Jeśli cena do niej dociera, akcje są "za drogie". Ryzyko spadku.
-                    * 🟢 **Sygnał KUPNA (MACD):** Niebieska linia przecina pomarańczową od dołu. Słupki stają się zielone.
-                    """)
+# ------------------------------------------
+# NARZĘDZIE 2: RADAR
+# ------------------------------------------
+elif narzedzie == "📡 Radar Okazji (Cały rynek)":
+    st.title(f"📡 {wybrany_rynek} - Radar Okazji")
+    
+    if len(aktywna_lista) == 0:
+        st.error(f"Twoja lista spółek dla tego rynku jest pusta! Dodaj firmy do pliku `{nazwa_pliku_info}`.")
+    else:
+        st.write(f"Ten radar przeanalizuje w tle **{len(aktywna_lista)}** spółek dodanych do pliku `{nazwa_pliku_info}`.")
+        
+        spolki_radar = [linia.split(" - ")[0].strip() + ".WA" for linia in aktywna_lista]
 
-# ==========================================
-# ZAKŁADKA 2: RADAR OKAZJI
-# ==========================================
-with tab2:
-    st.markdown("### 📡 Zeskanuj swoją listę spółek w poszukiwaniu okazji")
-    spolki_radar = [linia.split(" - ")[0].strip() + ".WA" for linia in lista_spolek]
-
-    st.write(f"Ten radar przeanalizuje w tle **{len(spolki_radar)}** spółek dodanych do Twojego pliku `spolki.txt`.")
-
-    if st.button("Uruchom Radar Okazji"):
-        if len(spolki_radar) == 0:
-            st.error("Twoja lista spółek jest pusta! Dodaj firmy do pliku spolki.txt.")
-        else:
-            with st.spinner('Pobieram pakiety danych z giełdy...'):
+        if st.button(f"Uruchom Radar dla {wybrany_rynek.replace('SKANER ', '')}"):
+            with st.spinner(f'Pobieram pakiety danych dla {len(spolki_radar)} spółek...'):
                 dane_rynku = yf.download(spolki_radar, period="6mo", progress=False)
                 
                 ceny_zamkniecia = dane_rynku['Close']
@@ -192,7 +200,7 @@ with tab2:
                         if sygnal_bb or sygnal_macd:
                             sila = "⭐⭐⭐ POTĘŻNY" if (sygnal_bb and sygnal_macd) else "⭐⭐ DOBRY" if sygnal_macd else "⭐ SŁABY"
                             nazwa_dla_radaru = ticker.replace(".WA", "")
-                            for linia in lista_spolek:
+                            for linia in aktywna_lista:
                                 if linia.startswith(nazwa_dla_radaru + " -"):
                                     nazwa_dla_radaru = linia.split(" - ")[1].strip()
                                     break
@@ -211,31 +219,32 @@ with tab2:
                 if len(znalezione_okazje) > 0:
                     df_wyniki = pd.DataFrame(znalezione_okazje)
                     df_wyniki = df_wyniki.sort_values(by="Siła Sygnału", ascending=False).reset_index(drop=True)
-                    st.success("🎯 Znalazłem następujące okazje na rynku:")
+                    st.success(f"🎯 Znalazłem następujące okazje na rynku {wybrany_rynek.replace('SKANER ', '')}:")
                     st.dataframe(df_wyniki, use_container_width=True)
                     
                     csv = df_wyniki.to_csv(index=False).encode('utf-8')
                     st.download_button(
                         label="📥 Pobierz raport wyników jako plik CSV",
                         data=csv,
-                        file_name='radar_okazji_gpw.csv',
+                        file_name=f"radar_okazji_{wybrany_rynek.replace(' ', '_').lower()}.csv",
                         mime='text/csv',
                     )
                 else:
-                    st.warning("🤷‍♂️ Żadna z obserwowanych przez Ciebie spółek nie generuje silnego sygnału kupna.")
+                    st.warning("🤷‍♂️ Żadna ze skanowanych spółek nie generuje w tej chwili silnego sygnału kupna.")
 
-# ==========================================
-# ZAKŁADKA 3: WIADOMOŚCI Z RYNKU (RSS)
-# ==========================================
-with tab3:
-    st.markdown("### 📰 Najświeższe komunikaty rynkowe (Ostatnie 7 dni)")
+
+# ------------------------------------------
+# NARZĘDZIE 3: WIADOMOŚCI
+# ------------------------------------------
+elif narzedzie == "📰 Wiadomości (GPW)":
+    st.title("📰 Najświeższe komunikaty rynkowe (Ostatnie 7 dni)")
     st.write("Wiadomości finansowe z polskiego internetu zebrane przez Google News. Wyniki posortowane od najnowszych.")
 
     @st.cache_data(ttl=600) 
     def pobierz_wiadomosci_tydzien():
         wiadomosci = []
         url_google_news = "https://news.google.com/rss/search?q=GPW+OR+Giełda+Papierów+Wartościowych+OR+Akcje+when:7d&hl=pl&gl=PL&ceid=PL:pl"
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'}
+        headers = {'User-Agent': 'Mozilla/5.0'}
         
         try:
             response = requests.get(url_google_news, headers=headers, timeout=5)
@@ -250,7 +259,6 @@ with tab3:
                     
                 wiadomosci.append({"tytul": tytul, "link": link, "data": data_publikacji})
             
-            # MAGIA PANDAS: Sortowanie wiadomości chronologicznie (od najnowszych)
             if wiadomosci:
                 wiadomosci.sort(key=lambda x: pd.to_datetime(x['data'], utc=True), reverse=True)
                 
@@ -268,8 +276,6 @@ with tab3:
         for art in artykuly:
             with st.container():
                 st.markdown(f"**[{art['tytul']}]({art['link']})**")
-                
-                # Formatujemy datę, by ładniej wyglądała po polsku
                 data_ladnie = pd.to_datetime(art['data']).strftime('%Y-%m-%d %H:%M')
                 st.caption(f"📅 {data_ladnie}")
                 st.divider()
