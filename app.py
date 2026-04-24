@@ -39,7 +39,6 @@ narzedzie = st.sidebar.radio(
         "🔍 Skaner (Pojedyncza spółka)", 
         "📡 Radar Okazji (Wzrosty)", 
         "📉 Radar Spadków (Łapanie dołków)",
-        "💰 Dywidendy (Kto płaci?)",
         "📰 Wiadomości (GPW)"
     ]
 )
@@ -97,11 +96,30 @@ if narzedzie == "🔍 Skaner (Pojedyncza spółka)":
                 symbol_us = symbol.replace(".WA", "")
                 stock_us = yf.Ticker(symbol_us)
                 df_us = stock_us.history(period=okres)
-                if not df_us.empty: df, symbol, pelna_nazwa = df_us, symbol_us, symbol_us if pelna_nazwa == symbol + ".WA" else pelna_nazwa
+                if not df_us.empty: df, symbol, pelna_nazwa, stock = df_us, symbol_us, symbol_us if pelna_nazwa == symbol + ".WA" else pelna_nazwa, stock_us
 
             if df.empty:
                 st.error(f"❌ Brak danych dla '{fraza}'.")
             else:
+                # --- POBIERANIE INFORMACJI O SPÓŁCE (Zabezpieczone) ---
+                sektor = "Brak danych"
+                branza = "Brak danych"
+                opis_spolki = "Opis niedostępny."
+                
+                try:
+                    info = stock.info
+                    sektor = info.get('sector', 'Brak danych')
+                    branza = info.get('industry', 'Brak danych')
+                    opis_raw = info.get('longBusinessSummary', '')
+                    if opis_raw:
+                        # Skracamy opis do pierwszych 3 zdań, by nie zajmował połowy ekranu
+                        opis_spolki = " ".join(opis_raw.split(". ")[:3])
+                        if not opis_spolki.endswith("."):
+                            opis_spolki += "."
+                except Exception:
+                    pass # Jeśli Yahoo zablokuje zapytanie o Info, ignorujemy i rysujemy same wykresy
+
+                # --- OBLICZENIA WSKAŹNIKÓW ---
                 ostatnia_cena = df['Close'].iloc[-1]
                 df['SMA_20'] = df['Close'].rolling(window=20).mean()
                 df['STD_20'] = df['Close'].rolling(window=20).std()
@@ -119,12 +137,20 @@ if narzedzie == "🔍 Skaner (Pojedyncza spółka)":
                 bb_status = "🟢 WYPRZEDANA" if ostatnia_cena <= ost_lower * 1.02 else "🔴 PRZEGRZANA" if ostatnia_cena >= ost_upper * 0.98 else "🟡 NEUTRALNA"
                 macd_status = "🟢 TREND WZROSTOWY" if ost_macd > ost_signal and ost_hist > 0 else "🔴 TREND SPADKOWY" if ost_macd < ost_signal and ost_hist < 0 else "🟡 ZMIANA TRENDU"
 
+                # --- WYŚWIETLANIE DANYCH ---
                 st.markdown(f"### 🏢 {pelna_nazwa} `({symbol})`")
+                st.caption(f"**Sektor:** {sektor} | **Branża:** {branza}")
+                
+                if opis_spolki != "Opis niedostępny.":
+                    with st.expander("ℹ️ Profil działalności (Język angielski)"):
+                        st.write(opis_spolki)
+
                 col1, col2, col3 = st.columns(3)
                 col1.metric("Wycena", f"{ostatnia_cena:.2f}")
                 col2.metric("Wstęgi Bollingera", bb_status)
                 col3.metric("Wskaźnik MACD", macd_status)
 
+                # --- WYKRES PLOTLY ---
                 fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3], subplot_titles=(f"Notowania", "MACD"))
                 if typ_wykresu == "Świecowy": fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Świece'), row=1, col=1)
                 else: fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', name='Cena', line=dict(color='#1f77b4', width=2)), row=1, col=1)
@@ -178,7 +204,7 @@ elif narzedzie == "📡 Radar Okazji (Wzrosty)":
                 else: st.warning("Brak sygnałów kupna.")
 
 # ------------------------------------------
-# NARZĘDZIE 3: RADAR SPADKÓW (NOWOŚĆ)
+# NARZĘDZIE 3: RADAR SPADKÓW 
 # ------------------------------------------
 elif narzedzie == "📉 Radar Spadków (Łapanie dołków)":
     st.title(f"📉 {wybrany_rynek} - Radar Spadków")
@@ -189,7 +215,6 @@ elif narzedzie == "📉 Radar Spadków (Łapanie dołków)":
         spolki_radar = [linia.split(" - ")[0].strip() + ".WA" for linia in aktywna_lista]
         if st.button("Uruchom detektor spadków"):
             with st.spinner('Analizuję dynamikę cen...'):
-                # Pobieramy szerszy zakres danych dla szczytów
                 dane = yf.download(spolki_radar, period="2mo", progress=False)['Close']
                 if isinstance(dane, pd.Series): dane = dane.to_frame(name=spolki_radar[0])
                 
@@ -200,20 +225,13 @@ elif narzedzie == "📉 Radar Spadków (Łapanie dołków)":
                         hist = dane[ticker].dropna()
                         if len(hist) < 15: continue
                         
-                        c0 = hist.iloc[-1] # Dziś
-                        c1 = hist.iloc[-2] # Wczoraj
-                        c2 = hist.iloc[-3] # Przedwczoraj
-                        c3 = hist.iloc[-4] # 3 dni temu
+                        c0, c1, c2, c3 = hist.iloc[-1], hist.iloc[-2], hist.iloc[-3], hist.iloc[-4]
                         
-                        # Warunek 1: Jednodniowy krach > 10%
                         spadek_1d_proc = ((c0 - c1) / c1) * 100
                         krach_10 = spadek_1d_proc <= -10.0
-                        
-                        # Warunek 2: Spadek 3 dni z rzędu
                         spadek_3_dni = (c0 < c1) and (c1 < c2) and (c2 < c3)
                         
                         if krach_10 or spadek_3_dni:
-                            # Szukamy "szczytu" przed rozpoczęciem spadku (najwyższa cena z ostatnich 14 dni)
                             szczyt = hist.tail(14).max()
                             laczny_spadek = ((c0 - szczyt) / szczyt) * 100
                             
@@ -239,66 +257,7 @@ elif narzedzie == "📉 Radar Spadków (Łapanie dołków)":
                     st.success("🟢 Na rynku jest spokojnie. Żadna spółka nie spełnia rygorystycznych kryteriów gwałtownego spadku.")
 
 # ------------------------------------------
-# NARZĘDZIE 4: DYWIDENDY (NOWOŚĆ)
-# ------------------------------------------
-elif narzedzie == "💰 Dywidendy (Kto płaci?)":
-    st.title(f"💰 {wybrany_rynek} - Skaner Dywidendowy")
-    st.info("ℹ️ Amerykańskie API Yahoo Finance nie podaje przyszłych dat wypłat dla GPW. Skaner bazuje na historii wypłat z ostatnich 12 miesięcy, obliczając dla Ciebie realną roczną Stopę Dywidendy (Yield).")
-    
-    if len(aktywna_lista) == 0: st.error("Lista spółek jest pusta!")
-    else:
-        spolki_radar = [linia.split(" - ")[0].strip() + ".WA" for linia in aktywna_lista]
-        
-        if st.button("Szukaj spółek płacących dywidendę"):
-            with st.spinner('Analizuję raporty z ostatnich 12 miesięcy... to może chwilę potrwać.'):
-                znalezione_dywidendy = []
-                
-                # Zamiast pobierać masowo, sprawdzamy po kolei, aby dostać tabelę dywidend
-                for ticker in spolki_radar:
-                    try:
-                        akcja = yf.Ticker(ticker)
-                        # Pobieramy dane z ostatniego roku
-                        df = akcja.history(period="1y")
-                        if df.empty or 'Dividends' not in df.columns:
-                            continue
-                            
-                        # Szukamy dni, w których wypłacono dywidendę
-                        dywidendy = df[df['Dividends'] > 0]
-                        
-                        if not dywidendy.empty:
-                            suma_wyplat = dywidendy['Dividends'].sum()
-                            ostatnia_cena = df['Close'].iloc[-1]
-                            
-                            # Obliczenie stopy dywidendy (Yield)
-                            stopa = (suma_wyplat / ostatnia_cena) * 100
-                            
-                            nazwa = next((l.split(" - ")[1].strip() for l in aktywna_lista if l.startswith(ticker.replace(".WA", ""))), ticker)
-                            
-                            znalezione_dywidendy.append({
-                                "Spółka": nazwa,
-                                "Symbol": ticker.replace(".WA", ""),
-                                "Wypłacono w 12 msc": f"{suma_wyplat:.2f} PLN",
-                                "Cena Akcji": f"{ostatnia_cena:.2f} PLN",
-                                "Stopa Dywidendy (Yield)": f"{stopa:.2f}%"
-                            })
-                    except Exception:
-                        continue
-
-                if znalezione_dywidendy:
-                    # Sortujemy od największej stopy dywidendy
-                    df_wyniki = pd.DataFrame(znalezione_dywidendy)
-                    # Konwersja formatu do liczby, żeby poprawnie posortować
-                    df_wyniki['sort_val'] = df_wyniki['Stopa Dywidendy (Yield)'].str.replace('%','').astype(float)
-                    df_wyniki = df_wyniki.sort_values(by="sort_val", ascending=False).drop(columns=['sort_val']).reset_index(drop=True)
-                    
-                    st.success(f"💸 Znaleziono {len(df_wyniki)} spółek wypłacających dywidendy:")
-                    st.dataframe(df_wyniki, use_container_width=True)
-                    st.markdown("*Chcesz poznać przyszłe daty Ex-Dividend? Najlepszym miejscem do ich sprawdzania dla polskiego rynku jest kalendarz portalu [Bankier.pl](https://www.bankier.pl/gielda/wiadomosci/dywidendy).*")
-                else:
-                    st.warning("Przez ostatnie 12 miesięcy żadna spółka z tej listy nie wypłaciła dywidendy.")
-
-# ------------------------------------------
-# NARZĘDZIE 5: WIADOMOŚCI
+# NARZĘDZIE 4: WIADOMOŚCI
 # ------------------------------------------
 elif narzedzie == "📰 Wiadomości (GPW)":
     st.title("📰 Najświeższe komunikaty rynkowe (Ostatnie 7 dni)")
