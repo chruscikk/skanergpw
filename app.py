@@ -96,30 +96,11 @@ if narzedzie == "🔍 Skaner (Pojedyncza spółka)":
                 symbol_us = symbol.replace(".WA", "")
                 stock_us = yf.Ticker(symbol_us)
                 df_us = stock_us.history(period=okres)
-                if not df_us.empty: df, symbol, pelna_nazwa, stock = df_us, symbol_us, symbol_us if pelna_nazwa == symbol + ".WA" else pelna_nazwa, stock_us
+                if not df_us.empty: df, symbol, pelna_nazwa = df_us, symbol_us, symbol_us if pelna_nazwa == symbol + ".WA" else pelna_nazwa
 
             if df.empty:
                 st.error(f"❌ Brak danych dla '{fraza}'.")
             else:
-                # --- POBIERANIE INFORMACJI O SPÓŁCE (Zabezpieczone) ---
-                sektor = "Brak danych"
-                branza = "Brak danych"
-                opis_spolki = "Opis niedostępny."
-                
-                try:
-                    info = stock.info
-                    sektor = info.get('sector', 'Brak danych')
-                    branza = info.get('industry', 'Brak danych')
-                    opis_raw = info.get('longBusinessSummary', '')
-                    if opis_raw:
-                        # Skracamy opis do pierwszych 3 zdań, by nie zajmował połowy ekranu
-                        opis_spolki = " ".join(opis_raw.split(". ")[:3])
-                        if not opis_spolki.endswith("."):
-                            opis_spolki += "."
-                except Exception:
-                    pass # Jeśli Yahoo zablokuje zapytanie o Info, ignorujemy i rysujemy same wykresy
-
-                # --- OBLICZENIA WSKAŹNIKÓW ---
                 ostatnia_cena = df['Close'].iloc[-1]
                 df['SMA_20'] = df['Close'].rolling(window=20).mean()
                 df['STD_20'] = df['Close'].rolling(window=20).std()
@@ -137,20 +118,14 @@ if narzedzie == "🔍 Skaner (Pojedyncza spółka)":
                 bb_status = "🟢 WYPRZEDANA" if ostatnia_cena <= ost_lower * 1.02 else "🔴 PRZEGRZANA" if ostatnia_cena >= ost_upper * 0.98 else "🟡 NEUTRALNA"
                 macd_status = "🟢 TREND WZROSTOWY" if ost_macd > ost_signal and ost_hist > 0 else "🔴 TREND SPADKOWY" if ost_macd < ost_signal and ost_hist < 0 else "🟡 ZMIANA TRENDU"
 
-                # --- WYŚWIETLANIE DANYCH ---
+                # Wyczyszczony nagłówek (Bez branży i opisu)
                 st.markdown(f"### 🏢 {pelna_nazwa} `({symbol})`")
-                st.caption(f"**Sektor:** {sektor} | **Branża:** {branza}")
                 
-                if opis_spolki != "Opis niedostępny.":
-                    with st.expander("ℹ️ Profil działalności (Język angielski)"):
-                        st.write(opis_spolki)
-
                 col1, col2, col3 = st.columns(3)
                 col1.metric("Wycena", f"{ostatnia_cena:.2f}")
                 col2.metric("Wstęgi Bollingera", bb_status)
                 col3.metric("Wskaźnik MACD", macd_status)
 
-                # --- WYKRES PLOTLY ---
                 fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3], subplot_titles=(f"Notowania", "MACD"))
                 if typ_wykresu == "Świecowy": fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Świece'), row=1, col=1)
                 else: fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', name='Cena', line=dict(color='#1f77b4', width=2)), row=1, col=1)
@@ -204,7 +179,7 @@ elif narzedzie == "📡 Radar Okazji (Wzrosty)":
                 else: st.warning("Brak sygnałów kupna.")
 
 # ------------------------------------------
-# NARZĘDZIE 3: RADAR SPADKÓW 
+# NARZĘDZIE 3: RADAR SPADKÓW
 # ------------------------------------------
 elif narzedzie == "📉 Radar Spadków (Łapanie dołków)":
     st.title(f"📉 {wybrany_rynek} - Radar Spadków")
@@ -225,7 +200,10 @@ elif narzedzie == "📉 Radar Spadków (Łapanie dołków)":
                         hist = dane[ticker].dropna()
                         if len(hist) < 15: continue
                         
-                        c0, c1, c2, c3 = hist.iloc[-1], hist.iloc[-2], hist.iloc[-3], hist.iloc[-4]
+                        c0 = hist.iloc[-1] # Dziś
+                        c1 = hist.iloc[-2] # Wczoraj
+                        c2 = hist.iloc[-3] # Przedwczoraj
+                        c3 = hist.iloc[-4] # 3 dni temu
                         
                         spadek_1d_proc = ((c0 - c1) / c1) * 100
                         krach_10 = spadek_1d_proc <= -10.0
@@ -244,13 +222,18 @@ elif narzedzie == "📉 Radar Spadków (Łapanie dołków)":
                                 "Cena przed spadkiem (Szczyt)": f"{szczyt:.2f} PLN",
                                 "Aktualna Cena": f"{c0:.2f} PLN",
                                 "Głębokość Spadku": f"{laczny_spadek:.2f}%",
-                                "Typ Spadku": powod
+                                "Typ Spadku": powod,
+                                "_raw_spadek": laczny_spadek # Ukryta kolumna do matematycznego sortowania
                             })
                     except Exception:
                         continue
 
                 if znalezione_spadki:
-                    df_wyniki = pd.DataFrame(znalezione_spadki).sort_values(by="Głębokość Spadku", ascending=True).reset_index(drop=True)
+                    # Sortowanie matematyczne od największego spadku (czyli najmniejszej liczby ujemnej) i usunięcie ukrytej kolumny
+                    df_wyniki = pd.DataFrame(znalezione_spadki)
+                    df_wyniki = df_wyniki.sort_values(by="_raw_spadek", ascending=True)
+                    df_wyniki = df_wyniki.drop(columns=['_raw_spadek']).reset_index(drop=True)
+                    
                     st.error("🚨 Wykryto mocne przeceny na poniższych spółkach:")
                     st.dataframe(df_wyniki, use_container_width=True)
                 else:
