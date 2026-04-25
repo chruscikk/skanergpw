@@ -12,7 +12,7 @@ warnings.filterwarnings('ignore')
 
 st.set_page_config(page_title="Skaner Giełdowy PRO", layout="wide", initial_sidebar_state="expanded")
 
-# --- UNIWERSALNA FUNKCJA WCZYTUJĄCA PLIKI ---
+# --- WCZYTYWANIE BAZY ---
 @st.cache_data
 def wczytaj_baze(nazwa_pliku):
     baza = []
@@ -60,7 +60,7 @@ st.sidebar.info("💡 Użyj ikonki '>' w lewym górnym rogu na telefonie, by ste
 # ==========================================
 
 # ------------------------------------------
-# NARZĘDZIE 1: SKANER (POPRAWIONY)
+# NARZĘDZIE 1: SKANER
 # ------------------------------------------
 if narzedzie == "🔍 Skaner (Pojedyncza spółka)":
     st.title(f"📈 {wybrany_rynek} - Analiza")
@@ -87,7 +87,6 @@ if narzedzie == "🔍 Skaner (Pojedyncza spółka)":
             df = stock.history(period=okres)
             if not df.empty:
                 ostatnia_cena = df['Close'].iloc[-1]
-                # Obliczenia wskaźników
                 df['SMA_20'] = df['Close'].rolling(window=20).mean()
                 df['STD_20'] = df['Close'].rolling(window=20).std()
                 df['Upper_BB'] = df['SMA_20'] + (df['STD_20'] * 2)
@@ -104,7 +103,6 @@ if narzedzie == "🔍 Skaner (Pojedyncza spółka)":
                 col2.metric("Bollinger", "🟢 Wyprzedana" if ostatnia_cena <= df['Lower_BB'].iloc[-1] * 1.02 else "🟡 Neutralna")
                 col3.metric("MACD", "🟢 Kupuj" if df['MACD'].iloc[-1] > df['Signal'].iloc[-1] else "🔴 Sprzedaj")
 
-                # Budowa wykresu z przywróconymi opisami
                 fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, 
                                     row_heights=[0.7, 0.3], 
                                     subplot_titles=("Notowania i Wstęgi Bollingera", "Wskaźnik MACD"))
@@ -114,17 +112,14 @@ if narzedzie == "🔍 Skaner (Pojedyncza spółka)":
                 else: 
                     fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', name='Cena (Zamknięcie)', line=dict(color='#1f77b4', width=2)), row=1, col=1)
                 
-                # Dodanie Wstęg Bollingera z nazwami
                 fig.add_trace(go.Scatter(x=df.index, y=df['Upper_BB'], mode='lines', name='Górna Wstęga', line=dict(color='rgba(255,0,0,0.4)', width=1, dash='dot')), row=1, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['Lower_BB'], mode='lines', name='Dolna Wstęga', line=dict(color='rgba(0,128,0,0.4)', width=1, dash='dot'), fill='tonexty', fillcolor='rgba(128,128,128,0.1)'), row=1, col=1)
                 
-                # MACD z nazwami
                 kolory_macd = ['green' if val >= 0 else 'red' for val in df['MACD_Hist']]
                 fig.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], name='Histogram', marker_color=kolory_macd), row=2, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['MACD'], mode='lines', name='Linia MACD', line=dict(color='blue')), row=2, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['Signal'], mode='lines', name='Linia Sygnałowa', line=dict(color='orange')), row=2, col=1)
                 
-                # Przywrócenie interaktywności i hovermode
                 fig.update_layout(height=750, margin=dict(l=20, r=20, t=40, b=20), hovermode='x unified', showlegend=False)
                 fig.update_xaxes(rangeslider_visible=False, row=1, col=1)
                 fig.update_xaxes(rangeslider_visible=True, rangeslider_thickness=0.05, row=2, col=1) 
@@ -144,7 +139,7 @@ elif narzedzie == "📡 Radar Okazji (Wzrosty)":
                 if isinstance(dane, pd.Series): dane = dane.to_frame(name=spolki_radar[0])
                 okazje = []
                 for ticker in spolki_radar:
-                    try:
+                    try: # <-- Otwarcie sprawdzania danej spółki
                         hist = dane[ticker].dropna()
                         if len(hist) < 50: continue
                         cena = hist.iloc[-1]
@@ -156,6 +151,9 @@ elif narzedzie == "📡 Radar Okazji (Wzrosty)":
                         if cena <= low_bb * 1.03 or (macd.iloc[-1] > sig.iloc[-1] and (macd.iloc[-1] - sig.iloc[-1]) > 0):
                             nazwa = next((l.split(" - ")[1].strip() for l in aktywna_lista if l.startswith(ticker.replace(".WA", ""))), ticker)
                             okazje.append({"Spółka": nazwa, "Symbol": ticker.replace(".WA", ""), "Cena": round(cena, 2)})
+                    except: 
+                        continue # <--- BRAKOWAŁO TEGO ZAMKNIĘCIA!
+
                 if okazje: st.dataframe(pd.DataFrame(okazje), use_container_width=True)
                 else: st.warning("Brak sygnałów.")
             except: st.error("Błąd podczas pobierania danych radarowych.")
