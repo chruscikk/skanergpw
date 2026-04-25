@@ -104,16 +104,27 @@ if narzedzie == "🔍 Skaner (Pojedyncza spółka)":
                 col2.metric("Bollinger", "🟢 Wyprzedana" if ostatnia_cena <= df['Lower_BB'].iloc[-1] * 1.02 else "🟡 Neutralna")
                 col3.metric("MACD", "🟢 Trend Wzrostowy" if df['MACD'].iloc[-1] > df['Signal'].iloc[-1] else "🔴 Trend Spadkowy")
 
-                fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
-                if typ_wykresu == "Świecowy": fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Świece'), row=1, col=1)
-                else: fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', name='Cena', line=dict(color='#1f77b4', width=2)), row=1, col=1)
+                # PRZYWRÓCONE ETYKIETY I ZNACZNIKI
+                fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3], subplot_titles=("Notowania (Wstęgi Bollingera)", "Wskaźnik MACD"))
                 
-                fig.add_trace(go.Scatter(x=df.index, y=df['Upper_BB'], mode='lines', line=dict(color='red', width=1, dash='dot')), row=1, col=1)
-                fig.add_trace(go.Scatter(x=df.index, y=df['Lower_BB'], mode='lines', line=dict(color='green', width=1, dash='dot'), fill='tonexty'), row=1, col=1)
+                if typ_wykresu == "Świecowy": 
+                    fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Świece'), row=1, col=1)
+                else: 
+                    fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', name='Cena', line=dict(color='#1f77b4', width=2)), row=1, col=1)
+                
+                fig.add_trace(go.Scatter(x=df.index, y=df['Upper_BB'], mode='lines', name='Górna Wstęga', line=dict(color='rgba(255,0,0,0.5)', width=1, dash='dot')), row=1, col=1)
+                fig.add_trace(go.Scatter(x=df.index, y=df['Lower_BB'], mode='lines', name='Dolna Wstęga', line=dict(color='rgba(0,128,0,0.5)', width=1, dash='dot'), fill='tonexty', fillcolor='rgba(128,128,128,0.1)'), row=1, col=1)
                 
                 kolory_macd = ['green' if val >= 0 else 'red' for val in df['MACD_Hist']]
-                fig.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], marker_color=kolory_macd), row=2, col=1)
-                fig.update_layout(height=750, xaxis_rangeslider_visible=False, showlegend=False)
+                fig.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], name='Siła Trendu', marker_color=kolory_macd), row=2, col=1)
+                fig.add_trace(go.Scatter(x=df.index, y=df['MACD'], mode='lines', name='MACD', line=dict(color='blue')), row=2, col=1)
+                fig.add_trace(go.Scatter(x=df.index, y=df['Signal'], mode='lines', name='Sygnał', line=dict(color='orange')), row=2, col=1)
+                
+                # PRZYWRÓCONY HOVERMODE (pionowa linia) I SUWAK
+                fig.update_layout(height=750, margin=dict(l=20, r=20, t=40, b=20), hovermode='x unified', showlegend=False)
+                fig.update_xaxes(rangeslider_visible=False, row=1, col=1)
+                fig.update_xaxes(rangeslider_visible=True, rangeslider_thickness=0.05, row=2, col=1) 
+                
                 st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
 
 # ------------------------------------------
@@ -162,7 +173,6 @@ elif narzedzie == "📉 Radar Spadków (Snajper)":
     spolki_radar = [linia.split(" - ")[0].strip() + ".WA" for linia in aktywna_lista]
     if st.button("Uruchom Snajpera"):
         with st.spinner('Analizuję historyczne dane (może to zająć chwilę)...'):
-            # Pobieramy rok danych dla SMA200 i Wolumenu
             dane_raw = yf.download(spolki_radar, period="1y", progress=False)
             ceny = dane_raw['Close']
             wolumeny = dane_raw['Volume']
@@ -174,9 +184,8 @@ elif narzedzie == "📉 Radar Spadków (Snajper)":
                 try:
                     hist = ceny[ticker].dropna()
                     vol_hist = wolumeny[ticker].dropna()
-                    if len(hist) < 200: continue # Potrzebujemy SMA200
+                    if len(hist) < 200: continue 
                     
-                    # Logika dni spadku/odbicia
                     dni_spadku, dni_odbicia = 0, 0
                     for i in range(1, 6):
                         if hist.iloc[-i] > hist.iloc[-(i+1)]: dni_odbicia += 1
@@ -186,23 +195,19 @@ elif narzedzie == "📉 Radar Spadków (Snajper)":
                         if hist.iloc[-i] < hist.iloc[-(i+1)]: dni_spadku += 1
                         else: break
 
-                    # RSI (14 dni)
                     delta = hist.diff()
                     up = delta.where(delta > 0, 0).rolling(14).mean()
                     down = -delta.where(delta < 0, 0).rolling(14).mean()
                     rsi = 100 - (100 / (1 + (up / down))).iloc[-1]
                     
-                    # Wolumen (czy dziś jest skok?)
                     vol_today = vol_hist.iloc[-1]
                     vol_avg = vol_hist.rolling(20).mean().iloc[-1]
                     skok_vol = "✅" if vol_today > vol_avg * 1.5 else "➖"
                     
-                    # SMA200 Proximity
                     sma200 = hist.rolling(200).mean().iloc[-1]
                     odl_sma200 = ((hist.iloc[-1] - sma200) / sma200) * 100
                     blisko_sma = "🎯 TAK" if abs(odl_sma200) < 3 else "➖"
                     
-                    # Filtrowanie po suwakach
                     szczyt = hist.tail(14).max()
                     krach = ((hist.iloc[-1] - szczyt) / szczyt) * 100
                     
