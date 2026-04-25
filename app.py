@@ -12,7 +12,7 @@ warnings.filterwarnings('ignore')
 
 st.set_page_config(page_title="Skaner Giełdowy PRO", layout="wide", initial_sidebar_state="expanded")
 
-# --- WCZYTYWANIE BAZY ---
+# --- UNIWERSALNA FUNKCJA WCZYTUJĄCA PLIKI ---
 @st.cache_data
 def wczytaj_baze(nazwa_pliku):
     baza = []
@@ -46,7 +46,6 @@ if narzedzie != "📰 Wiadomości (GPW)":
     elif wybrany_rynek == "SKANER WIG": aktywna_lista = lista_wig
     else: aktywna_lista = lista_nc
 
-    # DYNAMICZNE SUWAKI DLA RADARU SPADKÓW
     if narzedzie == "📉 Radar Spadków (Snajper)":
         st.sidebar.markdown("---")
         st.sidebar.markdown("🎯 **Ustawienia Snajpera:**")
@@ -61,7 +60,7 @@ st.sidebar.info("💡 Użyj ikonki '>' w lewym górnym rogu na telefonie, by ste
 # ==========================================
 
 # ------------------------------------------
-# NARZĘDZIE 1: SKANER
+# NARZĘDZIE 1: SKANER (POPRAWIONY)
 # ------------------------------------------
 if narzedzie == "🔍 Skaner (Pojedyncza spółka)":
     st.title(f"📈 {wybrany_rynek} - Analiza")
@@ -88,6 +87,7 @@ if narzedzie == "🔍 Skaner (Pojedyncza spółka)":
             df = stock.history(period=okres)
             if not df.empty:
                 ostatnia_cena = df['Close'].iloc[-1]
+                # Obliczenia wskaźników
                 df['SMA_20'] = df['Close'].rolling(window=20).mean()
                 df['STD_20'] = df['Close'].rolling(window=20).std()
                 df['Upper_BB'] = df['SMA_20'] + (df['STD_20'] * 2)
@@ -102,25 +102,29 @@ if narzedzie == "🔍 Skaner (Pojedyncza spółka)":
                 col1, col2, col3 = st.columns(3)
                 col1.metric("Wycena", f"{ostatnia_cena:.2f}")
                 col2.metric("Bollinger", "🟢 Wyprzedana" if ostatnia_cena <= df['Lower_BB'].iloc[-1] * 1.02 else "🟡 Neutralna")
-                col3.metric("MACD", "🟢 Trend Wzrostowy" if df['MACD'].iloc[-1] > df['Signal'].iloc[-1] else "🔴 Trend Spadkowy")
+                col3.metric("MACD", "🟢 Kupuj" if df['MACD'].iloc[-1] > df['Signal'].iloc[-1] else "🔴 Sprzedaj")
 
-                # PRZYWRÓCONE ETYKIETY I ZNACZNIKI
-                fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3], subplot_titles=("Notowania (Wstęgi Bollingera)", "Wskaźnik MACD"))
+                # Budowa wykresu z przywróconymi opisami
+                fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, 
+                                    row_heights=[0.7, 0.3], 
+                                    subplot_titles=("Notowania i Wstęgi Bollingera", "Wskaźnik MACD"))
                 
                 if typ_wykresu == "Świecowy": 
-                    fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Świece'), row=1, col=1)
+                    fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Cena (Świece)'), row=1, col=1)
                 else: 
-                    fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', name='Cena', line=dict(color='#1f77b4', width=2)), row=1, col=1)
+                    fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', name='Cena (Zamknięcie)', line=dict(color='#1f77b4', width=2)), row=1, col=1)
                 
-                fig.add_trace(go.Scatter(x=df.index, y=df['Upper_BB'], mode='lines', name='Górna Wstęga', line=dict(color='rgba(255,0,0,0.5)', width=1, dash='dot')), row=1, col=1)
-                fig.add_trace(go.Scatter(x=df.index, y=df['Lower_BB'], mode='lines', name='Dolna Wstęga', line=dict(color='rgba(0,128,0,0.5)', width=1, dash='dot'), fill='tonexty', fillcolor='rgba(128,128,128,0.1)'), row=1, col=1)
+                # Dodanie Wstęg Bollingera z nazwami
+                fig.add_trace(go.Scatter(x=df.index, y=df['Upper_BB'], mode='lines', name='Górna Wstęga', line=dict(color='rgba(255,0,0,0.4)', width=1, dash='dot')), row=1, col=1)
+                fig.add_trace(go.Scatter(x=df.index, y=df['Lower_BB'], mode='lines', name='Dolna Wstęga', line=dict(color='rgba(0,128,0,0.4)', width=1, dash='dot'), fill='tonexty', fillcolor='rgba(128,128,128,0.1)'), row=1, col=1)
                 
+                # MACD z nazwami
                 kolory_macd = ['green' if val >= 0 else 'red' for val in df['MACD_Hist']]
-                fig.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], name='Siła Trendu', marker_color=kolory_macd), row=2, col=1)
-                fig.add_trace(go.Scatter(x=df.index, y=df['MACD'], mode='lines', name='MACD', line=dict(color='blue')), row=2, col=1)
-                fig.add_trace(go.Scatter(x=df.index, y=df['Signal'], mode='lines', name='Sygnał', line=dict(color='orange')), row=2, col=1)
+                fig.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], name='Histogram', marker_color=kolory_macd), row=2, col=1)
+                fig.add_trace(go.Scatter(x=df.index, y=df['MACD'], mode='lines', name='Linia MACD', line=dict(color='blue')), row=2, col=1)
+                fig.add_trace(go.Scatter(x=df.index, y=df['Signal'], mode='lines', name='Linia Sygnałowa', line=dict(color='orange')), row=2, col=1)
                 
-                # PRZYWRÓCONY HOVERMODE (pionowa linia) I SUWAK
+                # Przywrócenie interaktywności i hovermode
                 fig.update_layout(height=750, margin=dict(l=20, r=20, t=40, b=20), hovermode='x unified', showlegend=False)
                 fig.update_xaxes(rangeslider_visible=False, row=1, col=1)
                 fig.update_xaxes(rangeslider_visible=True, rangeslider_thickness=0.05, row=2, col=1) 
@@ -135,102 +139,93 @@ elif narzedzie == "📡 Radar Okazji (Wzrosty)":
     spolki_radar = [linia.split(" - ")[0].strip() + ".WA" for linia in aktywna_lista]
     if st.button("Uruchom Radar"):
         with st.spinner('Skanuję rynek...'):
-            dane = yf.download(spolki_radar, period="6mo", progress=False)['Close']
-            if isinstance(dane, pd.Series): dane = dane.to_frame(name=spolki_radar[0])
-            okazje = []
-            for ticker in spolki_radar:
-                try:
-                    hist = dane[ticker].dropna()
-                    if len(hist) < 50: continue
-                    cena = hist.iloc[-1]
-                    ost_lower = hist.rolling(20).mean().iloc[-1] - (hist.rolling(20).std().iloc[-1] * 2)
-                    macd = hist.ewm(span=12).mean() - hist.ewm(span=26).mean()
-                    sig = macd.ewm(span=9).mean()
-                    if cena <= ost_lower * 1.03 or (macd.iloc[-1] > sig.iloc[-1] and (macd.iloc[-1] - sig.iloc[-1]) > 0):
-                        nazwa = next((l.split(" - ")[1].strip() for l in aktywna_lista if l.startswith(ticker.replace(".WA", ""))), ticker)
-                        okazje.append({"Spółka": nazwa, "Symbol": ticker.replace(".WA", ""), "Cena": round(cena, 2)})
-                except: continue
-            if okazje: st.dataframe(pd.DataFrame(okazje), use_container_width=True)
-            else: st.warning("Brak sygnałów.")
+            try:
+                dane = yf.download(spolki_radar, period="6mo", progress=False)['Close']
+                if isinstance(dane, pd.Series): dane = dane.to_frame(name=spolki_radar[0])
+                okazje = []
+                for ticker in spolki_radar:
+                    try:
+                        hist = dane[ticker].dropna()
+                        if len(hist) < 50: continue
+                        cena = hist.iloc[-1]
+                        sma20 = hist.rolling(20).mean()
+                        std20 = hist.rolling(20).std()
+                        low_bb = (sma20 - (std20 * 2)).iloc[-1]
+                        macd = hist.ewm(span=12).mean() - hist.ewm(span=26).mean()
+                        sig = macd.ewm(span=9).mean()
+                        if cena <= low_bb * 1.03 or (macd.iloc[-1] > sig.iloc[-1] and (macd.iloc[-1] - sig.iloc[-1]) > 0):
+                            nazwa = next((l.split(" - ")[1].strip() for l in aktywna_lista if l.startswith(ticker.replace(".WA", ""))), ticker)
+                            okazje.append({"Spółka": nazwa, "Symbol": ticker.replace(".WA", ""), "Cena": round(cena, 2)})
+                if okazje: st.dataframe(pd.DataFrame(okazje), use_container_width=True)
+                else: st.warning("Brak sygnałów.")
+            except: st.error("Błąd podczas pobierania danych radarowych.")
 
 # ------------------------------------------
 # NARZĘDZIE 3: RADAR SPADKÓW (SNAJPER)
 # ------------------------------------------
 elif narzedzie == "📉 Radar Spadków (Snajper)":
     st.title(f"📉 {wybrany_rynek} - Detektor Punktów Zwrotnych")
-    
-    with st.expander("📖 OPIS ANALIZ I WSKAŹNIKÓW (Jak czytać wyniki?)"):
+    with st.expander("📖 OPIS ANALIZ (Jak czytać wyniki?)"):
         st.markdown("""
-        ### **Na czym polega ta analiza?**
-        Ten radar szuka spółek skrajnie wyprzedanych, które mogą lada moment odbić. Sprawdzamy:
-        1.  **Dni spadku / wzrostu:** Pokazuje trend. Jeśli widzisz dni wzrostu > 0, oznacza to, że "nóż przestał spadać".
-        2.  **Głębokość spadku:** Procentowa strata od lokalnego szczytu z 14 dni.
-        3.  **RSI (Relative Strength Index):** Wskaźnik od 0 do 100. **Poniżej 30** to strefa paniki (często okazja).
-        4.  **Skok Wolumenu:** Jeśli wolumen dziś jest wyższy od średniej, oznacza to, że do gry weszli "Grubsi Gracze".
-        5.  **SMA200 (Średnia 200-sesyjna):** Najważniejsza linia trendu. Jeśli cena jest blisko niej, prawdopodobieństwo odbicia rośnie.
+        1. **Dni ↓ / ↑**: Licznik dni nieprzerwanych spadków oraz trwającego odbicia.
+        2. **Krach**: Procentowa strata od lokalnego szczytu (ostatnie 14 dni).
+        3. **RSI**: Poniżej 30 oznacza skrajne wyprzedanie (panika).
+        4. **Skok Vol**: ✅ oznacza, że wolumen jest o 50% wyższy niż średnia (duzi gracze kupują).
+        5. **Przy SMA200**: 🎯 oznacza, że cena jest blisko głównej średniej 200-sesyjnej.
         """)
 
     spolki_radar = [linia.split(" - ")[0].strip() + ".WA" for linia in aktywna_lista]
     if st.button("Uruchom Snajpera"):
-        with st.spinner('Analizuję historyczne dane (może to zająć chwilę)...'):
-            dane_raw = yf.download(spolki_radar, period="1y", progress=False)
-            ceny = dane_raw['Close']
-            wolumeny = dane_raw['Volume']
-            if isinstance(ceny, pd.Series): ceny = ceny.to_frame(name=spolki_radar[0])
-            if isinstance(wolumeny, pd.Series): wolumeny = wolumeny.to_frame(name=spolki_radar[0])
-            
-            wyniki = []
-            for ticker in spolki_radar:
-                try:
-                    hist = ceny[ticker].dropna()
-                    vol_hist = wolumeny[ticker].dropna()
-                    if len(hist) < 200: continue 
-                    
-                    dni_spadku, dni_odbicia = 0, 0
-                    for i in range(1, 6):
-                        if hist.iloc[-i] > hist.iloc[-(i+1)]: dni_odbicia += 1
-                        else: break
-                    start_sp = dni_odbicia + 1
-                    for i in range(start_sp, len(hist)):
-                        if hist.iloc[-i] < hist.iloc[-(i+1)]: dni_spadku += 1
-                        else: break
+        with st.spinner('Analizuję historię rynkową...'):
+            try:
+                dane_raw = yf.download(spolki_radar, period="1y", progress=False)
+                ceny = dane_raw['Close']
+                vols = dane_raw['Volume']
+                if isinstance(ceny, pd.Series): ceny = ceny.to_frame(name=spolki_radar[0])
+                if isinstance(vols, pd.Series): vols = vols.to_frame(name=spolki_radar[0])
+                
+                wyniki = []
+                for ticker in spolki_radar:
+                    try:
+                        hist = ceny[ticker].dropna()
+                        vh = vols[ticker].dropna()
+                        if len(hist) < 200: continue 
+                        
+                        # Licznik trendu
+                        up, down = 0, 0
+                        for i in range(1, 6):
+                            if hist.iloc[-i] > hist.iloc[-(i+1)]: up += 1
+                            else: break
+                        st_sp = up + 1
+                        for i in range(st_sp, len(hist)):
+                            if hist.iloc[-i] < hist.iloc[-(i+1)]: down += 1
+                            else: break
 
-                    delta = hist.diff()
-                    up = delta.where(delta > 0, 0).rolling(14).mean()
-                    down = -delta.where(delta < 0, 0).rolling(14).mean()
-                    rsi = 100 - (100 / (1 + (up / down))).iloc[-1]
-                    
-                    vol_today = vol_hist.iloc[-1]
-                    vol_avg = vol_hist.rolling(20).mean().iloc[-1]
-                    skok_vol = "✅" if vol_today > vol_avg * 1.5 else "➖"
-                    
-                    sma200 = hist.rolling(200).mean().iloc[-1]
-                    odl_sma200 = ((hist.iloc[-1] - sma200) / sma200) * 100
-                    blisko_sma = "🎯 TAK" if abs(odl_sma200) < 3 else "➖"
-                    
-                    szczyt = hist.tail(14).max()
-                    krach = ((hist.iloc[-1] - szczyt) / szczyt) * 100
-                    
-                    if dni_spadku >= min_dni or krach <= min_krach:
-                        nazwa = next((l.split(" - ")[1].strip() for l in aktywna_lista if l.startswith(ticker.replace(".WA", ""))), ticker)
-                        wyniki.append({
-                            "Spółka": nazwa,
-                            "Symbol": ticker.replace(".WA", ""),
-                            "Dni ↓": dni_spadku,
-                            "Dni ↑": f"🔥 {dni_odbicia}" if dni_odbicia > 0 else "0",
-                            "Krach": f"{krach:.2f}%",
-                            "RSI": round(rsi, 1),
-                            "Skok Vol": skok_vol,
-                            "Przy SMA200": blisko_sma,
-                            "_sort": krach
-                        })
-                except: continue
+                        # RSI
+                        delta = hist.diff()
+                        gain = delta.where(delta > 0, 0).rolling(14).mean()
+                        loss = -delta.where(delta < 0, 0).rolling(14).mean()
+                        rsi = 100 - (100 / (1 + (gain / loss))).iloc[-1]
+                        
+                        # Wolumen i SMA
+                        vol_ok = "✅" if vh.iloc[-1] > vh.rolling(20).mean().iloc[-1] * 1.5 else "➖"
+                        sma200 = hist.rolling(200).mean().iloc[-1]
+                        sma_ok = "🎯 TAK" if abs(((hist.iloc[-1] - sma200)/sma200)*100) < 3 else "➖"
+                        
+                        max14 = hist.tail(14).max()
+                        krach = ((hist.iloc[-1] - max14) / max14) * 100
+                        
+                        if down >= min_dni or krach <= min_krach:
+                            nazwa = next((l.split(" - ")[1].strip() for l in aktywna_lista if l.startswith(ticker.replace(".WA", ""))), ticker)
+                            wyniki.append({"Spółka": nazwa, "Symbol": ticker.replace(".WA", ""), "Dni ↓": down, "Dni ↑": f"🔥 {up}" if up > 0 else "0", "Krach": f"{krach:.2f}%", "RSI": round(rsi, 1), "Skok Vol": vol_ok, "Przy SMA200": sma_ok, "_s": krach})
+                    except: continue
 
-            if wyniki:
-                df = pd.DataFrame(wyniki).sort_values(by="_sort", ascending=True).drop(columns=['_sort']).reset_index(drop=True)
-                st.error("🚨 Wykryto następujące okazje po przecenach:")
-                st.dataframe(df, use_container_width=True)
-            else: st.info("Żadna spółka nie spełnia rygorystycznych kryteriów.")
+                if wyniki:
+                    df = pd.DataFrame(wyniki).sort_values("_s").drop(columns=["_s"]).reset_index(drop=True)
+                    st.error("🚨 Wykryte okazje:")
+                    st.dataframe(df, use_container_width=True)
+                else: st.info("Brak spółek spełniających kryteria.")
+            except: st.error("Błąd pobierania danych.")
 
 # ------------------------------------------
 # NARZĘDZIE 4: WIADOMOŚCI
